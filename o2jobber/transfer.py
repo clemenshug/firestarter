@@ -1,11 +1,14 @@
 import sys
 import os
+import re
 import pathlib
 import yaml
 import progressbar
+from shutil import copyfile
 from paramiko import SSHClient
 from scp import SCPClient
 
+remote_pattern = re.compile("^(.+):(.+)$")
 
 class SSHConfig(yaml.YAMLObject):
     yaml_tag = "!SSHConfig"
@@ -75,3 +78,17 @@ class SCPTransfer:
     
     def get_file(self, source, destination):
         self._scp.get(source, destination)
+
+
+def transfer_files(files, destination_dirs):
+    remotes = [remote_pattern.match(f) for f in files]
+    origins = [f if r is None else r.groups(1, 2) for f, r in zip(files, remotes)]
+    for o, d in zip(origins, destination_dirs):
+        pathlib.Path(d).mkdir(exist_ok = True)
+        if type(o) is tuple:
+            print(f"Transfering {o[1]} from {o[0]} to {d}")
+            scp = SCPTransfer(o[0])
+            scp.get_file(o[1], d)
+        else:
+            print(f"Copying {o} to {d}")
+            copyfile(o, d)
