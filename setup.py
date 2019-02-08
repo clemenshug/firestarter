@@ -12,7 +12,7 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: POSIX :: Linux  ",
     ],
-    requires = [
+    install_requires = [
         "pyyaml",
         "scp",
         "paramiko",
