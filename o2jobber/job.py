@@ -12,24 +12,24 @@ class DgeBcbioJob(object):
     dge_config_template = Template(dedent("""\
     details:
     - algorithm:
-            cellular_barcode_correction: 1
-            minimum_barcode_depth: 0
-            positional_umi: false
-            transcriptome_fasta: $transcriptome_fasta
-            transcriptome_gtf: $transcriptome_gtf
-            umi_type: harvard-scrb
-        analysis: scRNA-seq
-        description: masterplate
-        files: $fastq_files
-        genome_build: hg38
-        metadata: {}
+        cellular_barcode_correction: 1
+        minimum_barcode_depth: 0
+        positional_umi: false
+        transcriptome_fasta: $transcriptome_fasta
+        transcriptome_gtf: $transcriptome_gtf
+        umi_type: harvard-scrb
+      analysis: scRNA-seq
+      description: masterplate
+      files: $fastq_files
+      genome_build: hg38
+      metadata: {}
     fc_name: $name
     #resources:
     #    default:
     #        memory: $mem
     #        cores: $cores
     upload:
-        dir: ../final
+      dir: ../final
     """))
     dge_submit_template = Template(dedent("""\
     #!/bin/sh
@@ -91,9 +91,9 @@ class DgeBcbioJob(object):
     def prepare_meta(self):
         with open(self.run_directory / "config" / f"{self.name}.yaml", "w") as f:
             if isinstance(self.files_location["fastq_files"], typing.List):
-                fastq_str = ",".join(str(p) for p in self.files_location["fastq_files"])
+                fastq_str = ", ".join(f'"{p}""' for p in self.files_location["fastq_files"])
             else:
-                fastq_str = str(self.files_location["fastq_files"])
+                fastq_str = '"' + str(self.files_location["fastq_files"]) + '"'
             f.write(
                 self.dge_config_template.substitute(
                     transcriptome_fasta = str(self.files_location["transcriptome_fasta"]),
