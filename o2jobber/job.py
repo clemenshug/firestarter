@@ -47,7 +47,7 @@ class DgeBcbioJob(object):
 
     def __init__(self, name, working_directory, transcriptome_fasta,
                  transcriptome_gtf, fastq_files,
-                 slurm_params={"time_limit": "0-4:00", "cores": "8", "queue": "short"}):
+                 slurm_params={"time_limit": "0-4:00", "cores": "8", "queue": "short", "mem": "8000"}):
         self.name = name
         self.working_directory = pathlib.Path(working_directory).resolve()
         self.files_origin = {
