@@ -1,49 +1,95 @@
 import os
 import pathlib
+import itertools
+import typing
+import yaml
 from textwrap import dedent
 from datetime import datetime
 from string import Template
-from .transfer import transfer_files
+from .transfer import transfer_files_batch
 
-class DgeBcbioJob:
-    yaml_template = Template(dedent("""\
+class DgeBcbioJob(object):
+    dge_config_template = Template(dedent("""\
     details:
-        - analysis: scRNA-seq
-            algorithm:
-                transcriptome_fasta: $transcriptome_fasta
-                transcriptome_gtf: $transcriptome_gtf
-                umi_type: harvard-scrb
-                minimum_barcode_depth: 0
-                cellular_barcode_correction: 1
-                positional_umi: False
-                genome_build: hg38
+    - algorithm:
+            cellular_barcode_correction: 1
+            minimum_barcode_depth: 0
+            positional_umi: false
+            transcriptome_fasta: $transcriptome_fasta
+            transcriptome_gtf: $transcriptome_gtf
+            umi_type: harvard-scrb
+        analysis: scRNA-seq
+        description: masterplate
+        files: $fastq_files
+        genome_build: hg38
+        metadata: {}
+    fc_name: test
+    upload:
+        dir: ../final
     """))
 
-    def __init__(self, name, working_directory, transcriptome_fasta, transcriptome_gtf, fastq_files):
+    def __init__(self, name, working_directory, transcriptome_fasta,
+                 transcriptome_gtf, fastq_files):
         self.name = name
         self.working_directory = pathlib.Path(working_directory).resolve()
-        self.transcriptome_fasta = transcriptome_fasta
-        self.transcriptome_gtf = transcriptome_gtf
-        self.fastq_files = fastq_files if type(fastq_files) == list  else [fastq_files]
+        self.files_origin = {
+            "transcriptome_fasta": pathlib.Path(transcriptome_fasta),
+            "transcriptome_gtf": pathlib.Path(transcriptome_gtf),
+            "fastq_files": [
+                pathlib.Path(p) for p in (fastq_files if isinstance(fastq_files, typing.List) else [fastq_files])
+            ],
+        }
+        self.files_destination = {
+            "transcriptome_fasta": "transcriptome",
+            "transcriptome_gtf": "transcriptome",
+            "fastq_files": "fastq",
+        }
+        self.files_location = None
+        self.run_id = None
         self.run_directory = None
-        self.fastq_directory = None
 
     def prepare_working_directory(self):
         self.working_directory.mkdir(exist_ok = True)
 
     def prepare_run_directory(self):
-        self.prepare_working_directory()
-        cur_time = datetime.now().isoformat(timespec = "minutes")
-        self.run_directory = self.working_directory / (cur_time + self.name)
+        self.run_id = datetime.now().isoformat(timespec = "minutes").replace(":", "_") + "_"
+        self.run_directory = self.working_directory / (self.run_id + self.name)
         self.run_directory.mkdir(exist_ok = False)
-        self.fastq_directory = self.run_directory / "fastq"
-        self.fastq_directory.mkdir()
+        (self.run_directory / "config").mkdir(exist_ok = False)
+        (self.run_directory / "work").mkdir(exist_ok = False)
+        self.files_destination = {
+            k: self.run_directory / d for k, d in self.files_destination.items()
+        }
+        for d in self.files_destination.values():
+            d.mkdir(exist_ok = True)
 
     def transfer_files(self):
-        files = [self.transcriptome_fasta, self.transcriptome_gtf] + self.fastq_files
-        destinations = [self.working_directory / "transcriptome"]*2 + [self.fastq_directory]*len(self.fastq_files)
-        transfer_files(files, destinations)
+        file_transfers = {
+            n: (o, self.files_destination[n]) for n, o in self.files_origin.items()
+        }
+        self.files_location = transfer_files_batch(file_transfers)
+    
+    def prepare_meta(self):
+        with open(self.run_directory / "config" / f"{self.name}.yaml", "w") as f:
+            if isinstance(self.files_location["fastq_files"], typing.List):
+                fastq_str = ",".join(str(p) for p in self.files_location["fastq_files"])
+            else:
+                fastq_str = str(self.files_location["fastq_files"])
+            f.write(
+                self.dge_config_template.substitute(
+                    transcriptome_fasta = str(self.files_location["transcriptome_fasta"]),
+                    transcriptome_gtf = str(self.files_location["transcriptome_gtf"]),
+                    fastq_files = "[" + fastq_str + "]",
+                )
+            )
 
     def prepare_run(self):
+        self.prepare_working_directory()
         self.prepare_run_directory()
         self.transfer_files()
+        self.prepare_meta()
+
+    @classmethod
+    def from_yaml(cls, data):
+        atr_dict = yaml.safe_load(data)
+        return cls(**atr_dict)

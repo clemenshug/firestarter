@@ -1,6 +1,9 @@
 import sys
 import os
 import re
+import typing
+import itertools
+import operator
 import pathlib
 import yaml
 import progressbar
@@ -9,14 +12,6 @@ from paramiko import SSHClient
 from scp import SCPClient
 
 remote_pattern = re.compile("^(.+):(.+)$")
-
-class SSHConfig(yaml.YAMLObject):
-    yaml_tag = "!SSHConfig"
-
-    def __init__(self, host, user, keypass):
-        self.host = host
-        self.user = user
-        self.keypass = keypass
 
 def load_ssh_config(path = None):
     if path:
@@ -27,17 +22,18 @@ def load_ssh_config(path = None):
     ]
     for p in paths:
         if p.exists():
-            return yaml.load(p.read_text())
+            config = yaml.safe_load(p.read_text())
+            return config if isinstance(config, typing.List) else [config]
     return None
 
 def find_config(host):
     for c in ssh_config:
-        if c.host == host:
+        if c["host"] == host:
             return c
     return None
 
 ssh_config = load_ssh_config()
-if type(ssh_config) != list:
+if not isinstance(ssh_config, typing.List):
     ssh_config = [ssh_config]
 
 def wrap_progress_bar(pb):
@@ -45,33 +41,46 @@ def wrap_progress_bar(pb):
         pb.update(sent/size)
     return update_progress_bar
 
-class SCPProgressTracker:
+class SCPProgressTracker(object):
     def __init__(self):
         self.pbs = {}
     
     def __call__(self, filename, size, sent, peername):
         h = hash((filename, size, peername))
         if h not in self.pbs:
-            self.pbs[h] = progressbar.ProgressBar(max_value = 100, prefix = f"Downloading {filename}")
+            self.pbs[h] = progressbar.ProgressBar(
+                max_value = 100,
+                prefix = f"Downloading {filename}"
+            )
         self.pbs[h].update(sent/size)
 
 progress_tracker = SCPProgressTracker()
 
-class SCPTransfer:
+class SCPTransfer(object):
     def __init__(self, host, user = None, keypass = None, quiet = False):
         self.host = host
         config = find_config(host)
-        self.user = user or config.user
-        self.keypass = keypass or config.keypass
+        self.user = user or config["user"]
+        self.keypass = keypass or config["keypass"]
         self.quiet = quiet
         self._ssh = None
         self._scp = None
+
+    def __enter__(self):
         self.establish_connection()
-    
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._scp:
+            self._scp.close()
+        self._scp = None
+        self._ssh = None
+
     def establish_connection(self):
         ssh = SSHClient()
         ssh.load_system_host_keys()
-        ssh.connect(hostname=self.host, username=self.user, passphrase=self.keypass)
+        ssh.connect(hostname=self.host, username=self.user,
+            passphrase=self.keypass, auth_timeout=20)
         scp = SCPClient(ssh.get_transport(), progress4=progress_tracker)
         self._ssh = ssh
         self._scp = scp
@@ -80,15 +89,62 @@ class SCPTransfer:
         self._scp.get(source, destination)
 
 
-def transfer_files(files, destination_dirs):
-    remotes = [remote_pattern.match(f) for f in files]
-    origins = [f if r is None else r.groups(1, 2) for f, r in zip(files, remotes)]
-    for o, d in zip(origins, destination_dirs):
-        pathlib.Path(d).mkdir(exist_ok = True)
-        if type(o) is tuple:
-            print(f"Transfering {o[1]} from {o[0]} to {d}")
-            scp = SCPTransfer(o[0])
-            scp.get_file(o[1], d)
+# def transfer_file(source, destination):
+#     pathlib.Path(destination).mkdir(exist_ok = True)
+#     remote_match = remote_pattern.match(str(source))
+#     if remote_match is not None:
+#         source = remote_match.group(1, 2)
+#     if type(source) is tuple:
+#         print(f"Transfering {source[1]} from {source[0]} to {destination}")
+#         scp = SCPTransfer(source[0])
+#         scp.get_file(str(source[1]), str(destination))
+#         new = pathlib.Path(destination) / pathlib.Path(source[1]).name
+#     else:
+#         new = source
+#     #     print(f"Copying {o} to {d}")
+#     #     copyfile(o, d)
+#     if not new.exists():
+#         raise RuntimeError(f"File {source} does not exist at {new}"
+#                             "Did the transfer fail?")
+#     return new
+
+def transfer_files_batch(files):
+    # files = files if type(files) is list else [files]
+    # destination_dirs = destination_dirs if type(destination_dirs) is list else destination_dirs
+    # remotes = [remote_pattern.match(f) for f in files]
+    # origins = [f if r is None else r.group(1, 2) for f, r in zip(files, remotes)]
+    # new_locations = []
+    def resolve_location(source, destination):
+        remote_match = remote_pattern.match(str(source))
+        if remote_match is not None:
+            remote_source = remote_match.group(1, 2)
+            new_location = pathlib.Path(destination) / pathlib.Path(remote_source[1]).name
+            return (remote_source, new_location)
+        return (None, source)
+    def aggregate_by_host(transfers):
+        keyfunc = operator.itemgetter(0)
+        return itertools.groupby(sorted(transfers, key=keyfunc), key=keyfunc)
+    def execute_transfers(transfers):
+        for host, tlist in aggregate_by_host(transfers):
+            with SCPTransfer(host) as scp:
+                for _, (o, d) in tlist:
+                    scp.get_file(str(o), str(d))
+    file_locations = {}
+    file_transfers = []
+    for n, (o, d) in files.items():
+        if isinstance(o, typing.List):
+            location_list = []
+            for o_ in o:
+                remote_source, new_location = resolve_location(o_, d)
+                location_list.append(new_location)
+                if isinstance(remote_source, tuple):
+                    file_transfers.append((remote_source[0], (remote_source[1], d)))
+            file_locations[n] = location_list
         else:
-            print(f"Copying {o} to {d}")
-            copyfile(o, d)
+            remote_source, new_location = resolve_location(o, d)
+            file_locations[n] = new_location
+            if isinstance(remote_source, tuple):
+                file_transfers.append((remote_source[0], (remote_source[1], d)))
+    import ipdb; ipdb.set_trace()
+    execute_transfers(file_transfers)
+    return file_locations
