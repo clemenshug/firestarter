@@ -23,13 +23,31 @@ class DgeBcbioJob(object):
         files: $fastq_files
         genome_build: hg38
         metadata: {}
-    fc_name: test
+    fc_name: $name
+    #resources:
+    #    default:
+    #        memory: $mem
+    #        cores: $cores
     upload:
         dir: ../final
     """))
+    dge_submit_template = Template(dedent("""\
+    #!/bin/sh
+    #SBATCH -p $queue
+    #SBATCH -J $run_id
+    #SBATCH -o run.o
+    #SBATCH -e run.e
+    #SBATCH -t $time_limit
+    #SBATCH --cpus-per-task=1
+    #SBATCH --mem=$mem
+
+    export PATH=/n/app/bcbio/dev/anaconda/bin/:/n/app/bcbio/tools/bin:$PATH
+    bcbio_nextgen.py ../config/$name.yaml -n $cores -t ipython -s slurm -q $queue -r t=$time_limit
+    """))
 
     def __init__(self, name, working_directory, transcriptome_fasta,
-                 transcriptome_gtf, fastq_files):
+                 transcriptome_gtf, fastq_files,
+                 slurm_params={"time_limit": "0-4:00", "cores": "8", "queue": "short"}):
         self.name = name
         self.working_directory = pathlib.Path(working_directory).resolve()
         self.files_origin = {
@@ -44,6 +62,7 @@ class DgeBcbioJob(object):
             "transcriptome_gtf": "transcriptome",
             "fastq_files": "fastq",
         }
+        self.slurm_params = slurm_params
         self.files_location = None
         self.run_id = None
         self.run_directory = None
@@ -80,6 +99,16 @@ class DgeBcbioJob(object):
                     transcriptome_fasta = str(self.files_location["transcriptome_fasta"]),
                     transcriptome_gtf = str(self.files_location["transcriptome_gtf"]),
                     fastq_files = "[" + fastq_str + "]",
+                    name = self.name,
+                    cores = self.slurm_params["cores"],
+                    mem = self.slurm_params["mem"],
+                )
+            )
+        with open(self.run_directory / "work" / f"{self.name}_run.sh", "w") as f:
+            f.write(
+                self.dge_submit_template.substitute(
+                    self.slurm_params,
+                    name = self.name,
                 )
             )
 

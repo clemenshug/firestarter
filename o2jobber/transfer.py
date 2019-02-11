@@ -4,6 +4,7 @@ import re
 import typing
 import itertools
 import operator
+import shutil
 import pathlib
 import yaml
 import progressbar
@@ -119,32 +120,39 @@ def transfer_files_batch(files):
         if remote_match is not None:
             remote_source = remote_match.group(1, 2)
             new_location = pathlib.Path(destination) / pathlib.Path(remote_source[1]).name
-            return (remote_source, new_location)
-        return (None, source)
+            return (remote_source[0], (remote_source[1], new_location))
+        new_location = pathlib.Path(destination) / pathlib.Path(source).name
+        return (None, (source, new_location))
     def aggregate_by_host(transfers):
         keyfunc = operator.itemgetter(0)
         return itertools.groupby(sorted(transfers, key=keyfunc), key=keyfunc)
+    def check_transfer_success(d):
+        if not d.exists():
+            raise RuntimeError(f"Transfer of file to {d} failed!") 
     def execute_transfers(transfers):
         for host, tlist in aggregate_by_host(transfers):
+            if host is None:
+                for _, (o, d) in tlist:
+                    shutil.copy(str(o), str(d))
+                    check_transfer_success(d)
+                continue
             with SCPTransfer(host) as scp:
                 for _, (o, d) in tlist:
                     scp.get_file(str(o), str(d))
+                    check_transfer_success(d)
     file_locations = {}
     file_transfers = []
     for n, (o, d) in files.items():
         if isinstance(o, typing.List):
             location_list = []
             for o_ in o:
-                remote_source, new_location = resolve_location(o_, d)
+                host, (old_location, new_location) = resolve_location(o_, d)
                 location_list.append(new_location)
-                if isinstance(remote_source, tuple):
-                    file_transfers.append((remote_source[0], (remote_source[1], d)))
+                file_transfers.append((host, (old_location, new_location)))
             file_locations[n] = location_list
         else:
-            remote_source, new_location = resolve_location(o, d)
+            host, (old_location, new_location) = resolve_location(o, d)
             file_locations[n] = new_location
-            if isinstance(remote_source, tuple):
-                file_transfers.append((remote_source[0], (remote_source[1], d)))
-    import ipdb; ipdb.set_trace()
+            file_transfers.append((host, (old_location, new_location)))
     execute_transfers(file_transfers)
     return file_locations
