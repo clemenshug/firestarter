@@ -91,7 +91,7 @@ class DgeBcbioJob(object):
     def prepare_meta(self):
         with open(self.run_directory / "config" / f"{self.name}.yaml", "w") as f:
             if isinstance(self.files_location["fastq_files"], typing.List):
-                fastq_str = ", ".join(f'"{p}""' for p in self.files_location["fastq_files"])
+                fastq_str = ", ".join(f'"{p}"' for p in self.files_location["fastq_files"])
             else:
                 fastq_str = '"' + str(self.files_location["fastq_files"]) + '"'
             f.write(
