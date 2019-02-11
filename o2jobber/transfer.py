@@ -124,8 +124,10 @@ def transfer_files_batch(files):
         new_location = pathlib.Path(destination) / pathlib.Path(source).name
         return (None, (source, new_location))
     def aggregate_by_host(transfers):
-        keyfunc = operator.itemgetter(0)
-        return itertools.groupby(sorted(transfers, key=keyfunc), key=keyfunc)
+        def sortfunc(item):
+            k = item[0]
+            return k if k is not None else ""
+        return itertools.groupby(sorted(transfers, key=sortfunc), key=operator.itemgetter(0))
     def check_transfer_success(d):
         if not d.exists():
             raise RuntimeError(f"Transfer of file to {d} failed!") 
