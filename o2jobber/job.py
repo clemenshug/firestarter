@@ -109,6 +109,7 @@ class DgeBcbioJob(object):
                 self.dge_submit_template.substitute(
                     self.slurm_params,
                     name = self.name,
+                    run_id = self.run_id,
                 )
             )
 
