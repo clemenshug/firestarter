@@ -71,8 +71,8 @@ class DgeBcbioJob(object):
         self.working_directory.mkdir(exist_ok = True)
 
     def prepare_run_directory(self):
-        self.run_id = datetime.now().isoformat(timespec = "minutes").replace(":", "_") + "_"
-        self.run_directory = self.working_directory / (self.run_id + self.name)
+        self.run_id = datetime.now().isoformat(timespec = "minutes").replace(":", "_") + "_" + self.name
+        self.run_directory = self.working_directory / self.run_id
         self.run_directory.mkdir(exist_ok = False)
         (self.run_directory / "config").mkdir(exist_ok = False)
         (self.run_directory / "work").mkdir(exist_ok = False)
