@@ -41,7 +41,7 @@ class DgeBcbioJob(object):
     #SBATCH --cpus-per-task=1
     #SBATCH --mem=$mem
 
-    export PATH=/n/app/bcbio/dev/anaconda/bin/:/n/app/bcbio/tools/bin:$PATH
+    export PATH=/n/app/bcbio/dev/anaconda/bin/:/n/app/bcbio/tools/bin:$$PATH
     bcbio_nextgen.py ../config/$name.yaml -n $cores -t ipython -s slurm -q $queue -r t=$time_limit
     """))
 
