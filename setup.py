@@ -17,5 +17,8 @@ setuptools.setup(
         "scp",
         "paramiko",
         "progressbar2",
+    ],
+    scripts = [
+        "bin/o2j",
     ]
 )

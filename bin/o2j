@@ -1,0 +1,17 @@
+#!/usr/bin/env python
+
+import argparse
+import o2jobber
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "jobs",
+        nargs = "+",
+        help = "Job description .yaml files",
+    )
+    args = parser.parse_args()
+    for p in args.jobs:
+        with open(p, "r") as f:
+            j = o2jobber.DgeBcbioJob.from_yaml(f)
+        j.prepare_run()
