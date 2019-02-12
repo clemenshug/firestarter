@@ -9,9 +9,7 @@ from textwrap import dedent
 from datetime import datetime
 from string import Template
 from .transfer import transfer_files_batch
-
-def normalize_path(p):
-    return pathlib.Path(p).expanduser().resolve()
+from .util import normalize_path
 
 class DgeBcbioJob(object):
     dge_config_template = Template(dedent("""\

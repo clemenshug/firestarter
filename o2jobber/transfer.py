@@ -12,8 +12,6 @@ from shutil import copyfile
 from paramiko import SSHClient
 from scp import SCPClient
 
-remote_pattern = re.compile("^(.+):(.+)$")
-
 def load_ssh_config(path = None):
     if path:
         return yaml.load(path)
@@ -118,11 +116,9 @@ def transfer_files_batch(files):
     # origins = [f if r is None else r.group(1, 2) for f, r in zip(files, remotes)]
     # new_locations = []
     def resolve_location(source, destination):
-        remote_match = remote_pattern.match(str(source))
-        if remote_match is not None:
-            remote_source = remote_match.group(1, 2)
-            new_location = pathlib.Path(destination) / pathlib.Path(remote_source[1]).name
-            return (remote_source[0], (remote_source[1], new_location))
+        if type(source) is tuple:
+            new_location = pathlib.Path(destination) / pathlib.Path(source[1]).name
+            return (source[0], (source[1], new_location))
         new_location = pathlib.Path(destination) / pathlib.Path(source).name
         return (None, (source, new_location))
     def aggregate_by_host(transfers):
