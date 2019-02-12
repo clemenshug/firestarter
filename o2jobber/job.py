@@ -3,6 +3,7 @@ import pathlib
 import itertools
 import typing
 import subprocess
+import shutil
 import yaml
 from textwrap import dedent
 from datetime import datetime
@@ -118,10 +119,14 @@ class DgeBcbioJob(object):
             )
 
     def prepare_run(self):
-        self.prepare_working_directory()
-        self.prepare_run_directory()
-        self.transfer_files()
-        self.prepare_meta()
+        try:
+            self.prepare_working_directory()
+            self.prepare_run_directory()
+            self.transfer_files()
+            self.prepare_meta()
+        finally:
+            if self.run_directory:
+                shutil.rmtree(self.run_directory)
 
     def submit_run(self):
         cp = subprocess.run(
