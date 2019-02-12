@@ -122,9 +122,10 @@ class DgeBcbioJob(object):
             self.prepare_run_directory()
             self.transfer_files()
             self.prepare_meta()
-        finally:
+        except Exception as e:
             if self.run_directory:
                 shutil.rmtree(self.run_directory)
+            raise RuntimeError("Error during run directory preparation") from e
 
     def submit_run(self):
         cp = subprocess.run(

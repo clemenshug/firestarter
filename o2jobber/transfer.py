@@ -49,9 +49,9 @@ class SCPProgressTracker(object):
         if h not in self.pbs:
             self.pbs[h] = progressbar.ProgressBar(
                 max_value = 100,
-                prefix = f"Downloading {filename}"
+                # prefix = f"Downloading {filename}"
             )
-        self.pbs[h].update(sent/size)
+        self.pbs[h].update(round(100*sent/size, ndigits = 1))
         if sent == size:
             self.pbs[h].finish()
 
