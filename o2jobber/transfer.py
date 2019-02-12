@@ -54,6 +54,8 @@ class SCPProgressTracker(object):
                 prefix = f"Downloading {filename}"
             )
         self.pbs[h].update(sent/size)
+        if sent == size:
+            self.pbs[h].finish()
 
 progress_tracker = SCPProgressTracker()
 

@@ -2,6 +2,7 @@ import os
 import pathlib
 import itertools
 import typing
+import subprocess
 import yaml
 from textwrap import dedent
 from datetime import datetime
@@ -47,7 +48,7 @@ class DgeBcbioJob(object):
 
     def __init__(self, name, working_directory, transcriptome_fasta,
                  transcriptome_gtf, fastq_files,
-                 slurm_params={"time_limit": "0-4:00", "cores": "8", "queue": "short", "mem": "8000"}):
+                 slurm_params={"time_limit": "0-4:00", "cores": "24", "queue": "short", "mem": "8000"}):
         self.name = name
         self.working_directory = pathlib.Path(working_directory).resolve()
         self.files_origin = {
@@ -118,6 +119,18 @@ class DgeBcbioJob(object):
         self.prepare_run_directory()
         self.transfer_files()
         self.prepare_meta()
+
+    def submit_run(self):
+        cp = subprocess.run(
+            ["sbatch", f"{self.name}_run.sh"],
+            capture_output = True,
+            cwd = self.run_directory / "work",
+        )
+        if not cp.returncode == 0:
+            raise RuntimeError(
+                "Job submission unsuccesfull:\n",
+                cp.stderr
+            )
 
     @classmethod
     def from_yaml(cls, data):
