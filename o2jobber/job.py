@@ -9,6 +9,9 @@ from datetime import datetime
 from string import Template
 from .transfer import transfer_files_batch
 
+def normalize_path(p):
+    return pathlib.Path(p).expanduser().resolve()
+
 class DgeBcbioJob(object):
     dge_config_template = Template(dedent("""\
     details:
@@ -50,12 +53,12 @@ class DgeBcbioJob(object):
                  transcriptome_gtf, fastq_files,
                  slurm_params={"time_limit": "0-4:00", "cores": "24", "queue": "short", "mem": "8000"}):
         self.name = name
-        self.working_directory = pathlib.Path(working_directory).resolve()
+        self.working_directory = normalize_path(working_directory)
         self.files_origin = {
-            "transcriptome_fasta": pathlib.Path(transcriptome_fasta),
-            "transcriptome_gtf": pathlib.Path(transcriptome_gtf),
+            "transcriptome_fasta": normalize_path(transcriptome_fasta),
+            "transcriptome_gtf": normalize_path(transcriptome_gtf),
             "fastq_files": [
-                pathlib.Path(p) for p in (fastq_files if isinstance(fastq_files, typing.List) else [fastq_files])
+                normalize_path(p) for p in (fastq_files if isinstance(fastq_files, typing.List) else [fastq_files])
             ],
         }
         self.files_destination = {
