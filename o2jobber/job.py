@@ -27,7 +27,9 @@ class DgeBcbioJob(object):
       genome_build: hg38
       metadata: {}
     fc_name: $name
-    #resources:
+    # resources:
+    #   tmp:
+    #     dir: /tmp
     #    default:
     #        memory: $mem
     #        cores: $cores
@@ -123,7 +125,7 @@ class DgeBcbioJob(object):
             self.transfer_files()
             self.prepare_meta()
         except Exception as e:
-            if self.run_directory:
+            if self.run_directory.exists():
                 shutil.rmtree(self.run_directory)
             raise RuntimeError("Error during run directory preparation") from e
 

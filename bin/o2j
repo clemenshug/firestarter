@@ -10,8 +10,15 @@ if __name__ == "__main__":
         nargs = "+",
         help = "Job description .yaml files",
     )
+    parser.add_argument(
+        "--no-submit",
+        action = "store_true",
+        help = "Only create run directory structure and files, don't submit",
+    )
     args = parser.parse_args()
     for p in args.jobs:
         with open(p, "r") as f:
             j = o2jobber.DgeBcbioJob.from_yaml(f)
         j.prepare_run()
+        if not args.no_submit:
+            j.submit_run()
