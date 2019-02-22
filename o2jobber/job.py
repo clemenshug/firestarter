@@ -262,7 +262,7 @@ class BulkRnaseqBcbioJob(RnaseqGenericBcbioJob):
         "analysis": "RNA-seq",
         "description": None,
         "files": None,
-        "genome_build": "GRCh38",
+        "genome_build": "hg38",
         "metadata": {}
     }
     submit_template = Template(dedent("""\
