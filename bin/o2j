@@ -3,6 +3,7 @@
 import argparse
 import csv
 import pathlib
+import pandas as pd
 import o2jobber
 from copy import deepcopy
 from o2jobber.util import parse_csv
@@ -46,7 +47,7 @@ if __name__ == "__main__":
         if args.p.suffix == "yaml":
             raise NotImplementedError("Yaml job descrioption not implemented yet...")
         elif args.p.suffix == "csv":
-            csv_contents = parse_csv(args.p)
+            csv_contents = pd.read_csv(args.p)
             job_dict["data"] = csv_contents
             j = job_class.from_dict(job_dict)
         j.prepare_run()
