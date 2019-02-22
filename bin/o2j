@@ -3,12 +3,13 @@
 import argparse
 import csv
 import pathlib
+import sys
 import pandas as pd
 import o2jobber
 from copy import deepcopy
 from o2jobber.util import parse_csv
 
-if __name__ == "__main__":
+def main(sys_args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "job_type",
@@ -16,10 +17,9 @@ if __name__ == "__main__":
         help = "Type of job, one of " + ", ".join(o2jobber.job_types.keys()),
     )
     parser.add_argument(
-        "jobs",
-        nargs = "+",
+        "job",
         type = pathlib.Path,
-        help = "Job description .yaml or .csv files",
+        help = "Job description .yaml or .csv file",
     )
     parser.add_argument(
         "--no-submit",
@@ -36,20 +36,23 @@ if __name__ == "__main__":
         default = pathlib.Path.cwd(),
         help = "Working directory for creating runs. Default: Current directory",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(sys_args)
     job_class = o2jobber.job_types[args.job_type]
-    job_dict_template = {
+    job_dict = {
         "working_directory": args.working_directory,
-        "name": args.name if args.name is not None else args.jobs.stem,
+        "name": args.name if args.name is not None else args.job.stem,
     }
-    for p in args.jobs:
-        job_dict = deepcopy(job_dict_template)
-        if args.p.suffix == "yaml":
-            raise NotImplementedError("Yaml job descrioption not implemented yet...")
-        elif args.p.suffix == "csv":
-            csv_contents = pd.read_csv(args.p)
-            job_dict["data"] = csv_contents
-            j = job_class.from_dict(job_dict)
-        j.prepare_run()
-        if not args.no_submit:
-            j.submit_run()
+    if args.job.suffix == ".yaml":
+        raise NotImplementedError("Yaml job descrioption not implemented yet...")
+    elif args.job.suffix == ".csv":
+        csv_contents = pd.read_csv(args.job)
+        job_dict["data"] = csv_contents
+        j = job_class.from_dict(job_dict)
+    else:
+        raise ValueError("Job description file type not supported: ", str(args.job.suffix))
+    j.prepare_run()
+    if not args.no_submit:
+        j.submit_run()
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
