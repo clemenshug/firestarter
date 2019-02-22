@@ -40,7 +40,7 @@ if not isinstance(ssh_config, typing.List):
 class SCPProgressTracker(object):
     def __init__(self):
         self.pbs = {}
-    
+
     def __call__(self, filename, size, sent, peername):
         h = hash((filename, size, peername))
         if h not in self.pbs:
@@ -83,7 +83,7 @@ class SCPTransfer(object):
         scp = SCPClient(ssh.get_transport(), progress4=progress_tracker)
         self._ssh = ssh
         self._scp = scp
-    
+
     def get_file(self, source, destination):
         self._scp.get(source, destination)
 
@@ -102,16 +102,18 @@ def transfer_files_batch(files):
         return itertools.groupby(sorted(transfers, key=sortfunc), key=operator.itemgetter(0))
     def check_transfer_success(d):
         if not d.exists():
-            raise RuntimeError(f"Transfer of file to {d} failed!") 
+            raise RuntimeError(f"Transfer of file to {d} failed!")
     def execute_transfers(transfers):
         for host, tlist in aggregate_by_host(transfers):
             if host is None:
                 for _, (o, d) in tlist:
+                    print(f"Copy {o} to {d}")
                     shutil.copy(str(o), str(d))
                     check_transfer_success(d)
                 continue
             with SCPTransfer(host) as scp:
                 for _, (o, d) in tlist:
+                    print(f"Copy {o} from server {host} to {d}")
                     scp.get_file(str(o), str(d))
                     check_transfer_success(d)
     file_locations = {}
