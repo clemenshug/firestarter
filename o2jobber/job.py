@@ -146,12 +146,12 @@ class RnaseqGenericBcbioJob(BcbioJob):
 
     def merge_files(self):
         def perform_merge(files, i):
-            prefix = os.path.commonprefix(*files)
+            prefix = os.path.commonprefix(files)
             if len(prefix) == 0:
                 raise ValueError("Couldn't find prefix for " + str(files))
             ext = "".join(pathlib.Path(files[0]).suffixes)
-            dest =  f"{prefix}_merged_{i}{ext}"
-            print("Merging", " ".join(files), "into", dest)
+            dest =  f"{prefix}_merged{i}{ext}"
+            print("Merging", " ".join(str(f) for f in files), "into", dest)
             concatenate_files(files, dest)
             return dest
         def merge_per_sample(files):
@@ -160,25 +160,23 @@ class RnaseqGenericBcbioJob(BcbioJob):
                 # Nothing to merge
                 return files
             # If one fastq is paired, all should be paired
-            if any(isinstance(p, tuple) for p in pairs):
-                if not all(isinstance(p, tuple) for p in pairs):
+            if any(isinstance(p, typing.List) for p in pairs):
+                if not all(isinstance(p, typing.List) for p in pairs):
                     raise ValueError("Pairing error: " + str(pairs))
                 files_merge = list(zip(*pairs))
                 files_destination = []
                 for i, files in enumerate(files_merge):
-                    dest = perform_merge(files, i)
+                    dest = perform_merge(files, f"_{i + 1}")
                 files_destination.append(pathlib.Path(dest))
             else:
                 dest = perform_merge(pairs, "")
                 files_destination = [pathlib.Path(dest)]
             return files_destination
-        def head(x, n):
-            x.head(n = n)
         sample_groups = self.data_transformed.groupby("id")
         merged_data = []
         for _, g in sample_groups:
             d = merge_per_sample(g["fastq"])
-            m = g.agg(head, n = len(d))
+            m = g.head(n = len(d))
             m["fastq"] = d
             merged_data.append(m)
         self.data_transformed = pd.concat(merged_data, ignore_index=True)
