@@ -28,7 +28,7 @@ class BcbioJob(abc.ABC):
         self.name = name
         self.working_directory = normalize_path(working_directory)
         self.data = data
-        self.data_transformed = data.copy(deep = True)
+        self.data_transformed = None
         self.files_destination = {}
         self.slurm_params = slurm_params
         self.files_location = None
@@ -150,6 +150,7 @@ class RnaseqGenericBcbioJob(BcbioJob):
         }
         self.normalize_paths()
         self.check_data()
+        self.data_transformed = data.copy(deep = True)
 
     def merge_files(self):
         def perform_merge(files, i):
