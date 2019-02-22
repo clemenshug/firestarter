@@ -175,7 +175,7 @@ class RnaseqGenericBcbioJob(BcbioJob):
                 files_destination = []
                 for i, files in enumerate(files_merge):
                     dest = perform_merge(files, f"_{i + 1}")
-                files_destination.append(pathlib.Path(dest))
+                    files_destination.append(pathlib.Path(dest))
             else:
                 dest = perform_merge(pairs, "")
                 files_destination = [pathlib.Path(dest)]
