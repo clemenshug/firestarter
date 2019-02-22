@@ -130,7 +130,7 @@ def transfer_files_batch(files):
             file_locations[n] = location_list
         else:
             host, (old_location, new_location) = resolve_location(o, d)
-            file_locations[n] = (old_location, new_location)
+            file_locations[n] = [(old_location, new_location)]
             file_transfers.append((host, (old_location, new_location)))
     execute_transfers(file_transfers)
     return file_locations
