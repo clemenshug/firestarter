@@ -107,13 +107,14 @@ def transfer_files_batch(files):
         for host, tlist in aggregate_by_host(transfers):
             if host is None:
                 for _, (o, d) in tlist:
-                    print(f"Copy {o} to {d}")
+                    print(f"Copy {o.stem} to {d}")
                     shutil.copy(str(o), str(d))
                     check_transfer_success(d)
                 continue
+            print(f"Opening connection to {host}")
             with SCPTransfer(host) as scp:
                 for _, (o, d) in tlist:
-                    print(f"Copy {o} from server {host} to {d}")
+                    print(f"Copy {pathlib.Path(o).stem} from server to {d}")
                     scp.get_file(str(o), str(d))
                     check_transfer_success(d)
     file_locations = {}
