@@ -64,7 +64,7 @@ class BcbioJob(abc.ABC):
         for n in self.data:
             if n not in self.files_destination:
                 continue
-            file_transfers[n] = set(itertools.zip_longest(self.data[n], [self.files_destination[n]]))
+            file_transfers[n] = (list(set(self.data[n])), self.files_destination[n])
         locations = transfer_files_batch(file_transfers)
         for n, l in locations.items():
             o, d = list(zip(*l))
