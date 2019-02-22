@@ -24,7 +24,7 @@ SLURM_PARAMS_DEFAULT = {
 
 
 class BcbioJob(abc.ABC):
-    def __init__(self, name, working_directory, data, slurm_params=SLURM_PARAMS_DEFAULT):
+    def __init__(self, name, working_directory, data, slurm_params=SLURM_PARAMS_DEFAULT, debug = False):
         self.name = name
         self.working_directory = normalize_path(working_directory)
         self.data = data
@@ -34,6 +34,7 @@ class BcbioJob(abc.ABC):
         self.files_location = None
         self.run_id = None
         self.run_directory = None
+        self.debug = debug
 
     def check_data(self):
         required_cols = {"id"} | set(self.files_destination.keys())
@@ -79,6 +80,13 @@ class BcbioJob(abc.ABC):
         pass
 
     def prepare_run(self):
+        if self.debug:
+            self.prepare_working_directory()
+            self.prepare_run_directory()
+            self.transfer_files()
+            self.merge_files()
+            self.prepare_meta()
+            return
         try:
             self.prepare_working_directory()
             self.prepare_run_directory()
@@ -124,9 +132,9 @@ class RnaseqGenericBcbioJob(BcbioJob):
     sample_meta = None
     submit_template = None
 
-    def __init__(self, name, working_directory, data, slurm_params = SLURM_PARAMS_DEFAULT):
+    def __init__(self, name, working_directory, data, slurm_params = SLURM_PARAMS_DEFAULT, debug = False):
         super().__init__(name = name, working_directory = working_directory,
-                         data = data, slurm_params = slurm_params)
+                         data = data, slurm_params = slurm_params, debug = debug)
         self.files_destination = {
             "transcriptome_fasta": "transcriptome",
             "transcriptome_gtf": "transcriptome",

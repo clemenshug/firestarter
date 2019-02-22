@@ -36,11 +36,17 @@ def main(sys_args):
         default = pathlib.Path.cwd(),
         help = "Working directory for creating runs. Default: Current directory",
     )
+    parser.add_argument(
+        "--debug",
+        action = "store_true",
+        help = "Enable debug mode. More messages. Temporary files are not deleted.",
+    )
     args = parser.parse_args(sys_args)
     job_class = o2jobber.job_types[args.job_type]
     job_dict = {
         "working_directory": args.working_directory,
         "name": args.name if args.name is not None else args.job.stem,
+        "debug": args.debug,
     }
     if args.job.suffix == ".yaml":
         raise NotImplementedError("Yaml job descrioption not implemented yet...")

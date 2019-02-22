@@ -1,4 +1,5 @@
 import sys
+import getpass
 import os
 import re
 import typing
@@ -59,8 +60,8 @@ class SCPTransfer(object):
     def __init__(self, host, user = None, keypass = None, quiet = False):
         self.host = host
         config = find_config(host)
-        self.user = user or config["user"]
-        self.keypass = keypass or config["keypass"]
+        self.user = user or config.get("user") or input(f"Username for {host}: ")
+        self.keypass = keypass or config.get("keypass") or getpass.getpass("Password for keyfile: ")
         self.quiet = quiet
         self._ssh = None
         self._scp = None
@@ -79,7 +80,7 @@ class SCPTransfer(object):
         ssh = SSHClient()
         ssh.load_system_host_keys()
         ssh.connect(hostname=self.host, username=self.user,
-            passphrase=self.keypass, auth_timeout=20)
+            passphrase=self.keypass, allow_agent=False, auth_timeout=20)
         scp = SCPClient(ssh.get_transport(), progress4=progress_tracker)
         self._ssh = ssh
         self._scp = scp
