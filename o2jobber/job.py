@@ -174,7 +174,7 @@ class RnaseqGenericBcbioJob(BcbioJob):
             return files_destination
         def head(x, n):
             x.head(n = n)
-        sample_groups = self.data.groupby("id")
+        sample_groups = self.data_transformed.groupby("id")
         merged_data = []
         for _, g in sample_groups:
             d = merge_per_sample(g["fastq"])

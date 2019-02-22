@@ -11,8 +11,15 @@ remote_pattern = re.compile("^(.+):(.+)$")
 def normalize_path(p):
     remote_match = remote_pattern.match(str(p))
     if remote_match is not None:
-        return remote_match.group(1, 2)
+        return str(p)
     return pathlib.Path(p).expanduser().resolve()
+
+
+def extract_host(p):
+    remote_match = remote_pattern.match(str(p))
+    if remote_match is None:
+        return (None, p)
+    return remote_match.group(1, 2)
 
 
 def concatenate_files(source_files, destination):

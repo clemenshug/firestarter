@@ -12,6 +12,7 @@ import progressbar
 from shutil import copyfile
 from paramiko import SSHClient
 from scp import SCPClient
+from .util import extract_host
 
 
 def load_ssh_config(path = None):
@@ -91,6 +92,7 @@ class SCPTransfer(object):
 
 def transfer_files_batch(files):
     def resolve_location(source, destination):
+        source = extract_host(source)
         if type(source) is tuple:
             new_location = pathlib.Path(destination) / pathlib.Path(source[1]).name
             return (source[0], (source[1], new_location))
