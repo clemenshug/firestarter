@@ -123,10 +123,10 @@ def transfer_files_batch(files):
     for n, (o, d) in files.items():
         if isinstance(o, typing.List):
             location_list = []
-            for o_ in o:
-                host, (old_location, new_location) = resolve_location(o_, d)
-                location_list.append((old_location, new_location))
-                file_transfers.append((host, (old_location, new_location)))
+            for host_location in o:
+                host, (remote_location, new_location) = resolve_location(host_location, d)
+                location_list.append((host_location, new_location))
+                file_transfers.append((host, (remote_location, new_location)))
             file_locations[n] = location_list
         else:
             host, (old_location, new_location) = resolve_location(o, d)

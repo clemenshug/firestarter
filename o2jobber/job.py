@@ -73,7 +73,6 @@ class BcbioJob(abc.ABC):
                 n: o,
                 f"{n}_moved": d,
             })
-            asdf
             self.data_transformed = pd.merge(self.data_transformed, new_loc, how = "left", on = n)
             self.data_transformed[n] = self.data_transformed[f"{n}_moved"]
             self.data_transformed.drop(columns=f"{n}_moved", inplace=True)
