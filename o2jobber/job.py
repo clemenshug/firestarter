@@ -195,11 +195,11 @@ class RnaseqGenericBcbioJob(BcbioJob):
         for n, g in data_by_sample:
             m = deepcopy(self.sample_meta)
             m["description"] = n
-            m["files"] = list(g["fastq"])
-            m["algorithm"]["transcriptome_fasta"] = g["transcriptome_fasta"][0]
-            m["algorithm"]["transcriptome_gtf"] = g["transcriptome_gtf"][0]
+            m["files"] = list(str(p) for p in g["fastq"])
+            m["algorithm"]["transcriptome_fasta"] = str(g["transcriptome_fasta"].iloc[0])
+            m["algorithm"]["transcriptome_gtf"] = str(g["transcriptome_gtf"].iloc[0])
             meta_cols = set(self.data_transformed) - ({"id"} | set(self.files_destination.keys()))
-            m["metadata"] = {c: g[c][0] for c in meta_cols}
+            m["metadata"] = {c: g[c].iloc[0] for c in meta_cols}
             sample_meta.append(m)
         sample_meta = {
             "details": sample_meta,
