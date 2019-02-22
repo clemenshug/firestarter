@@ -121,12 +121,12 @@ def transfer_files_batch(files):
             location_list = []
             for o_ in o:
                 host, (old_location, new_location) = resolve_location(o_, d)
-                location_list.append(new_location)
+                location_list.append((old_location, new_location))
                 file_transfers.append((host, (old_location, new_location)))
             file_locations[n] = location_list
         else:
             host, (old_location, new_location) = resolve_location(o, d)
-            file_locations[n] = new_location
+            file_locations[n] = (old_location, new_location)
             file_transfers.append((host, (old_location, new_location)))
     execute_transfers(file_transfers)
     return file_locations

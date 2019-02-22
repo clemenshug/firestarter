@@ -4,6 +4,7 @@ import argparse
 import csv
 import pathlib
 import o2jobber
+from copy import deepcopy
 from o2jobber.util import parse_csv
 
 if __name__ == "__main__":
@@ -24,16 +25,30 @@ if __name__ == "__main__":
         action = "store_true",
         help = "Only create run directory structure and files, don't submit",
     )
+    parser.add_argument(
+        "-n", "--name",
+        default = None,
+        help = "Name of job. Default: Name of job description file",
+    )
+    parser.add_argument(
+        "-wd", "--working-directory",
+        default = pathlib.Path.cwd(),
+        help = "Working directory for creating runs. Default: Current directory",
+    )
     args = parser.parse_args()
     job_class = o2jobber.job_types[args.job_type]
+    job_dict_template = {
+        "working_directory": args.working_directory,
+        "name": args.name if args.name is not None else args.jobs.stem,
+    }
     for p in args.jobs:
+        job_dict = deepcopy(job_dict_template)
         if args.p.suffix == "yaml":
-            with open(p, "r") as f:
-                j = o2jobber.DgeBcbioJob.from_yaml(f)
+            raise NotImplementedError("Yaml job descrioption not implemented yet...")
         elif args.p.suffix == "csv":
             csv_contents = parse_csv(args.p)
-            
-
+            job_dict["data"] = csv_contents
+            j = job_class.from_dict(job_dict)
         j.prepare_run()
         if not args.no_submit:
             j.submit_run()
