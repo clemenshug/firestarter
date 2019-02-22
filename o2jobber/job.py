@@ -184,7 +184,7 @@ class RnaseqGenericBcbioJob(BcbioJob):
         merged_data = []
         for _, g in sample_groups:
             d = merge_per_sample(g["fastq"])
-            m = g.head(n = len(d))
+            m = g.copy().head(n = len(d))
             m["fastq"] = d
             merged_data.append(m)
         self.data_transformed = pd.concat(merged_data, ignore_index=True)
@@ -209,7 +209,7 @@ class RnaseqGenericBcbioJob(BcbioJob):
             }
         }
         with open(self.run_directory / "config" / f"{self.name}.yaml", "w") as f:
-            yaml.safe_dump(sample_meta, stream = f)
+            yaml.safe_dump(sample_meta, stream = f, default_flow_style=False)
         with open(self.run_directory / "work" / f"{self.name}_run.sh", "w") as f:
             f.write(
                 self.submit_template.substitute(
