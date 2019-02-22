@@ -1,1 +1,1 @@
-from .job import DgeBcbioJob
+from .job import DgeBcbioJob, BulkRnaseqBcbioJob, job_types

@@ -12,6 +12,7 @@ from shutil import copyfile
 from paramiko import SSHClient
 from scp import SCPClient
 
+
 def load_ssh_config(path = None):
     if path:
         return yaml.load(path)
@@ -35,10 +36,6 @@ ssh_config = load_ssh_config()
 if not isinstance(ssh_config, typing.List):
     ssh_config = [ssh_config]
 
-def wrap_progress_bar(pb):
-    def update_progress_bar(filename, size, sent):
-        pb.update(sent/size)
-    return update_progress_bar
 
 class SCPProgressTracker(object):
     def __init__(self):
@@ -56,6 +53,7 @@ class SCPProgressTracker(object):
             self.pbs[h].finish()
 
 progress_tracker = SCPProgressTracker()
+
 
 class SCPTransfer(object):
     def __init__(self, host, user = None, keypass = None, quiet = False):
@@ -90,31 +88,7 @@ class SCPTransfer(object):
         self._scp.get(source, destination)
 
 
-# def transfer_file(source, destination):
-#     pathlib.Path(destination).mkdir(exist_ok = True)
-#     remote_match = remote_pattern.match(str(source))
-#     if remote_match is not None:
-#         source = remote_match.group(1, 2)
-#     if type(source) is tuple:
-#         print(f"Transfering {source[1]} from {source[0]} to {destination}")
-#         scp = SCPTransfer(source[0])
-#         scp.get_file(str(source[1]), str(destination))
-#         new = pathlib.Path(destination) / pathlib.Path(source[1]).name
-#     else:
-#         new = source
-#     #     print(f"Copying {o} to {d}")
-#     #     copyfile(o, d)
-#     if not new.exists():
-#         raise RuntimeError(f"File {source} does not exist at {new}"
-#                             "Did the transfer fail?")
-#     return new
-
 def transfer_files_batch(files):
-    # files = files if type(files) is list else [files]
-    # destination_dirs = destination_dirs if type(destination_dirs) is list else destination_dirs
-    # remotes = [remote_pattern.match(f) for f in files]
-    # origins = [f if r is None else r.group(1, 2) for f, r in zip(files, remotes)]
-    # new_locations = []
     def resolve_location(source, destination):
         if type(source) is tuple:
             new_location = pathlib.Path(destination) / pathlib.Path(source[1]).name

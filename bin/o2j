@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 
 import argparse
+import csv
+import pathlib
 import o2jobber
+from o2jobber.util import parse_csv
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "job_type",
+        choices = list(o2jobber.job_types.keys()),
+        help = "Type of job, one of " + ", ".join(o2jobber.job_types.keys()),
+    )
+    parser.add_argument(
         "jobs",
         nargs = "+",
-        help = "Job description .yaml files",
+        type = pathlib.Path,
+        help = "Job description .yaml or .csv files",
     )
     parser.add_argument(
         "--no-submit",
@@ -16,9 +25,15 @@ if __name__ == "__main__":
         help = "Only create run directory structure and files, don't submit",
     )
     args = parser.parse_args()
+    job_class = o2jobber.job_types[args.job_type]
     for p in args.jobs:
-        with open(p, "r") as f:
-            j = o2jobber.DgeBcbioJob.from_yaml(f)
+        if args.p.suffix == "yaml":
+            with open(p, "r") as f:
+                j = o2jobber.DgeBcbioJob.from_yaml(f)
+        elif args.p.suffix == "csv":
+            csv_contents = parse_csv(args.p)
+            
+
         j.prepare_run()
         if not args.no_submit:
             j.submit_run()
