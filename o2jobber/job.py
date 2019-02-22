@@ -73,9 +73,16 @@ class BcbioJob(abc.ABC):
                 n: o,
                 f"{n}_moved": d,
             })
-            self.data_transformed = pd.merge(self.data_transformed, new_loc, how = "left", on = n)
-            self.data_transformed[n] = self.data_transformed[f"{n}_moved"]
-            self.data_transformed.drop(columns=f"{n}_moved", inplace=True)
+            transformed = pd.merge(self.data_transformed, new_loc, how = "left", on = n)
+            transformed[n] = transformed[f"{n}_moved"]
+            transformed.drop(columns=f"{n}_moved", inplace=True)
+            if not all(p.exists() for p in transformed[n]):
+                raise RuntimeError(
+                    "Files not found at new location:\n",
+                    str(list(filter(lambda p: not p.exists(), transformed[n])))
+                )
+            self.data_transformed = transformed
+
 
     def merge_files(self):
         pass
