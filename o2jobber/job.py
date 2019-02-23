@@ -24,7 +24,14 @@ SLURM_PARAMS_DEFAULT = {
 
 
 class BcbioJob(abc.ABC):
-    def __init__(self, name, working_directory, data, slurm_params=SLURM_PARAMS_DEFAULT, debug = False):
+    def __init__(
+        self,
+        name,
+        working_directory,
+        data,
+        slurm_params=SLURM_PARAMS_DEFAULT,
+        debug=False,
+    ):
         self.name = name
         self.working_directory = normalize_path(working_directory)
         self.data = data
@@ -42,23 +49,27 @@ class BcbioJob(abc.ABC):
         if len(missing_cols) > 0:
             raise ValueError(
                 "The following required columns are missing from data:\n",
-                str(missing_cols)
+                str(missing_cols),
             )
 
     def prepare_working_directory(self):
-        self.working_directory.mkdir(exist_ok = True)
+        self.working_directory.mkdir(exist_ok=True)
 
     def prepare_run_directory(self):
-        self.run_id = datetime.now().isoformat(timespec = "minutes").replace(":", "_") + "_" + self.name
+        self.run_id = (
+            datetime.now().isoformat(timespec="minutes").replace(":", "_")
+            + "_"
+            + self.name
+        )
         self.run_directory = self.working_directory / self.run_id
-        self.run_directory.mkdir(exist_ok = False)
-        (self.run_directory / "config").mkdir(exist_ok = False)
-        (self.run_directory / "work").mkdir(exist_ok = False)
+        self.run_directory.mkdir(exist_ok=False)
+        (self.run_directory / "config").mkdir(exist_ok=False)
+        (self.run_directory / "work").mkdir(exist_ok=False)
         self.files_destination = {
             k: self.run_directory / d for k, d in self.files_destination.items()
         }
         for d in self.files_destination.values():
-            d.mkdir(exist_ok = True)
+            d.mkdir(exist_ok=True)
 
     def transfer_files(self):
         file_transfers = {}
@@ -69,20 +80,16 @@ class BcbioJob(abc.ABC):
         locations = transfer_files_batch(file_transfers)
         for n, l in locations.items():
             o, d = list(zip(*l))
-            new_loc = pd.DataFrame({
-                n: o,
-                f"{n}_moved": d,
-            })
-            transformed = pd.merge(self.data_transformed, new_loc, how = "left", on = n)
+            new_loc = pd.DataFrame({n: o, f"{n}_moved": d})
+            transformed = pd.merge(self.data_transformed, new_loc, how="left", on=n)
             transformed[n] = transformed[f"{n}_moved"]
             transformed.drop(columns=f"{n}_moved", inplace=True)
             if not all(p.exists() for p in transformed[n]):
                 raise RuntimeError(
                     "Files not found at new location:\n",
-                    str(list(filter(lambda p: not p.exists(), transformed[n])))
+                    str(list(filter(lambda p: not p.exists(), transformed[n]))),
                 )
             self.data_transformed = transformed
-
 
     def merge_files(self):
         pass
@@ -109,14 +116,11 @@ class BcbioJob(abc.ABC):
     def submit_run(self):
         cp = subprocess.run(
             ["sbatch", f"{self.name}_run.sh"],
-            capture_output = True,
-            cwd = self.run_directory / "work",
+            capture_output=True,
+            cwd=self.run_directory / "work",
         )
         if not cp.returncode == 0:
-            raise RuntimeError(
-                "Job submission unsuccesfull:\n",
-                cp.stderr
-            )
+            raise RuntimeError("Job submission unsuccesfull:\n", cp.stderr)
 
     def normalize_paths(self):
         for n in self.files_destination:
@@ -140,9 +144,21 @@ class RnaseqGenericBcbioJob(BcbioJob):
     sample_meta = None
     submit_template = None
 
-    def __init__(self, name, working_directory, data, slurm_params = SLURM_PARAMS_DEFAULT, debug = False):
-        super().__init__(name = name, working_directory = working_directory,
-                         data = data, slurm_params = slurm_params, debug = debug)
+    def __init__(
+        self,
+        name,
+        working_directory,
+        data,
+        slurm_params=SLURM_PARAMS_DEFAULT,
+        debug=False,
+    ):
+        super().__init__(
+            name=name,
+            working_directory=working_directory,
+            data=data,
+            slurm_params=slurm_params,
+            debug=debug,
+        )
         self.files_destination = {
             "transcriptome_fasta": "transcriptome",
             "transcriptome_gtf": "transcriptome",
@@ -150,7 +166,7 @@ class RnaseqGenericBcbioJob(BcbioJob):
         }
         self.normalize_paths()
         self.check_data()
-        self.data_transformed = data.copy(deep = True)
+        self.data_transformed = data.copy(deep=True)
 
     def merge_files(self):
         def perform_merge(files, i):
@@ -158,10 +174,11 @@ class RnaseqGenericBcbioJob(BcbioJob):
             if len(prefix) == 0:
                 raise ValueError("Couldn't find prefix for " + str(files))
             ext = "".join(pathlib.Path(files[0]).suffixes)
-            dest =  f"{prefix}_merged{i}{ext}"
+            dest = f"{prefix}_merged{i}{ext}"
             print("Merging", " ".join(str(f) for f in files), "into", dest)
             concatenate_files(files, dest)
             return dest
+
         def merge_per_sample(files):
             pairs = combine_pairs(files)
             if len(pairs) == 1:
@@ -180,11 +197,12 @@ class RnaseqGenericBcbioJob(BcbioJob):
                 dest = perform_merge(pairs, "")
                 files_destination = [pathlib.Path(dest)]
             return files_destination
+
         sample_groups = self.data_transformed.groupby("id")
         merged_data = []
         for _, g in sample_groups:
             d = merge_per_sample(g["fastq"])
-            m = g.copy().head(n = len(d))
+            m = g.copy().head(n=len(d))
             m["fastq"] = d
             merged_data.append(m)
         self.data_transformed = pd.concat(merged_data, ignore_index=True)
@@ -196,26 +214,26 @@ class RnaseqGenericBcbioJob(BcbioJob):
             m = deepcopy(self.sample_meta)
             m["description"] = n
             m["files"] = list(str(p) for p in g["fastq"])
-            m["algorithm"]["transcriptome_fasta"] = str(g["transcriptome_fasta"].iloc[0])
+            m["algorithm"]["transcriptome_fasta"] = str(
+                g["transcriptome_fasta"].iloc[0]
+            )
             m["algorithm"]["transcriptome_gtf"] = str(g["transcriptome_gtf"].iloc[0])
-            meta_cols = set(self.data_transformed) - ({"id"} | set(self.files_destination.keys()))
+            meta_cols = set(self.data_transformed) - (
+                {"id"} | set(self.files_destination.keys())
+            )
             m["metadata"] = {c: g[c].iloc[0] for c in meta_cols}
             sample_meta.append(m)
         sample_meta = {
             "details": sample_meta,
             "fc_name": self.name,
-            "upload": {
-                "dir": "../final",
-            }
+            "upload": {"dir": "../final"},
         }
         with open(self.run_directory / "config" / f"{self.name}.yaml", "w") as f:
-            yaml.safe_dump(sample_meta, stream = f, default_flow_style=False)
+            yaml.safe_dump(sample_meta, stream=f, default_flow_style=False)
         with open(self.run_directory / "work" / f"{self.name}_run.sh", "w") as f:
             f.write(
                 self.submit_template.substitute(
-                    self.slurm_params,
-                    name = self.name,
-                    run_id = self.run_id,
+                    self.slurm_params, name=self.name, run_id=self.run_id
                 )
             )
 
@@ -234,9 +252,11 @@ class DgeBcbioJob(RnaseqGenericBcbioJob):
         "description": None,
         "files": None,
         "genome_build": "hg38",
-        "metadata": {}
+        "metadata": {},
     }
-    submit_template = Template(dedent("""\
+    submit_template = Template(
+        dedent(
+            """\
     #!/bin/sh
     #SBATCH -p $queue
     #SBATCH -J $run_id
@@ -248,7 +268,9 @@ class DgeBcbioJob(RnaseqGenericBcbioJob):
 
     export PATH=/n/app/bcbio/dev/anaconda/bin/:/n/app/bcbio/tools/bin:$$PATH
     bcbio_nextgen.py ../config/$name.yaml -n $cores -t ipython -s slurm -q $queue -r t=$time_limit
-    """))
+    """
+        )
+    )
 
 
 class BulkRnaseqBcbioJob(RnaseqGenericBcbioJob):
@@ -263,9 +285,11 @@ class BulkRnaseqBcbioJob(RnaseqGenericBcbioJob):
         "description": None,
         "files": None,
         "genome_build": "hg38",
-        "metadata": {}
+        "metadata": {},
     }
-    submit_template = Template(dedent("""\
+    submit_template = Template(
+        dedent(
+            """\
     #!/bin/sh
     #SBATCH -p $queue
     #SBATCH -J $run_id
@@ -277,7 +301,9 @@ class BulkRnaseqBcbioJob(RnaseqGenericBcbioJob):
 
     export PATH=/n/app/bcbio/dev/anaconda/bin/:/n/app/bcbio/tools/bin:$$PATH
     bcbio_nextgen.py ../config/$name.yaml -n $cores -t ipython -s slurm -q $queue -r t=$time_limit
-    """))
+    """
+        )
+    )
 
 
 job_types = {

@@ -9,37 +9,38 @@ import o2jobber
 from copy import deepcopy
 from o2jobber.util import parse_csv
 
+
 def main(sys_args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "job_type",
-        choices = list(o2jobber.job_types.keys()),
-        help = "Type of job, one of " + ", ".join(o2jobber.job_types.keys()),
+        choices=list(o2jobber.job_types.keys()),
+        help="Type of job, one of " + ", ".join(o2jobber.job_types.keys()),
     )
     parser.add_argument(
-        "job",
-        type = pathlib.Path,
-        help = "Job description .yaml or .csv file",
+        "job", type=pathlib.Path, help="Job description .yaml or .csv file"
     )
     parser.add_argument(
         "--no-submit",
-        action = "store_true",
-        help = "Only create run directory structure and files, don't submit",
+        action="store_true",
+        help="Only create run directory structure and files, don't submit",
     )
     parser.add_argument(
-        "-n", "--name",
-        default = None,
-        help = "Name of job. Default: Name of job description file",
+        "-n",
+        "--name",
+        default=None,
+        help="Name of job. Default: Name of job description file",
     )
     parser.add_argument(
-        "-wd", "--working-directory",
-        default = pathlib.Path.cwd(),
-        help = "Working directory for creating runs. Default: Current directory",
+        "-wd",
+        "--working-directory",
+        default=pathlib.Path.cwd(),
+        help="Working directory for creating runs. Default: Current directory",
     )
     parser.add_argument(
         "--debug",
-        action = "store_true",
-        help = "Enable debug mode. More messages. Temporary files are not deleted.",
+        action="store_true",
+        help="Enable debug mode. More messages. Temporary files are not deleted.",
     )
     args = parser.parse_args(sys_args)
     job_class = o2jobber.job_types[args.job_type]
@@ -55,10 +56,13 @@ def main(sys_args):
         job_dict["data"] = csv_contents
         j = job_class.from_dict(job_dict)
     else:
-        raise ValueError("Job description file type not supported: ", str(args.job.suffix))
+        raise ValueError(
+            "Job description file type not supported: ", str(args.job.suffix)
+        )
     j.prepare_run()
     if not args.no_submit:
         j.submit_run()
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])

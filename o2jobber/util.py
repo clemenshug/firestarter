@@ -30,7 +30,7 @@ def concatenate_files(source_files, destination):
     with open(destination, "wb") as out_handle:
         for s in source_files:
             with open(s, "rb") as in_handle:
-                shutil.copyfileobj(in_handle, out_handle, length = 16*1024*1024)
+                shutil.copyfileobj(in_handle, out_handle, length=16 * 1024 * 1024)
 
 
 def parse_csv(p):
@@ -62,7 +62,7 @@ def rstrip_extra(fname):
     while fname.endswith(to_strip):
         for x in to_strip:
             if fname.endswith(x):
-                fname = fname[:len(fname) - len(x)]
+                fname = fname[: len(fname) - len(x)]
                 break
     return fname
 
@@ -72,7 +72,7 @@ def sort_filenames(filenames):
     sort a list of files by filename only, ignoring the directory names
     """
     basenames = [os.path.basename(x) for x in filenames]
-    indexes = [i[0] for i in sorted(enumerate(basenames), key=lambda x:x[1])]
+    indexes = [i[0] for i in sorted(enumerate(basenames), key=lambda x: x[1])]
     return [filenames[x] for x in indexes]
 
 
@@ -111,31 +111,40 @@ def combine_pairs(input_files, force_single=False, full_name=False, separators=N
                 s = str_diff(a, b)
                 # no differences, then its the same file stem
                 if len(s) == 0:
-                    raise ValueError("%s and %s have the same stem, so we don't know "
-                                 "how to assign it to the sample data in the CSV. To "
-                                 "get around this you can rename one of the files. "
-                                 "If they are meant to be the same sample run in two "
-                                 "lanes, combine them first with the "
-                                 "bcbio_prepare_samples.py script."
-                                 "(http://bcbio-nextgen.readthedocs.io/en/latest/contents/configuration.html#multiple-files-per-sample)"
-                                 % (in_file, comp_file))
+                    raise ValueError(
+                        "%s and %s have the same stem, so we don't know "
+                        "how to assign it to the sample data in the CSV. To "
+                        "get around this you can rename one of the files. "
+                        "If they are meant to be the same sample run in two "
+                        "lanes, combine them first with the "
+                        "bcbio_prepare_samples.py script."
+                        "(http://bcbio-nextgen.readthedocs.io/en/latest/contents/configuration.html#multiple-files-per-sample)"
+                        % (in_file, comp_file)
+                    )
                 if len(s) > 1:
-                    continue #there is more than 1 difference
-                if (a[s[0]] in PAIR_FILE_IDENTIFIERS and
-                      b[s[0]] in PAIR_FILE_IDENTIFIERS):
+                    continue  # there is more than 1 difference
+                if (
+                    a[s[0]] in PAIR_FILE_IDENTIFIERS
+                    and b[s[0]] in PAIR_FILE_IDENTIFIERS
+                ):
                     # if the 1/2 isn't the last digit before a separator, skip
                     # this skips stuff like 2P 2A, often denoting replicates, not
                     # read pairings
                     if len(b) > (s[0] + 1):
-                        if (b[s[0]+1] not in ("_", "-", ".")):
+                        if b[s[0] + 1] not in ("_", "-", "."):
                             continue
                     # if the 1/2 is not a separator or prefaced with R, skip
                     if b[s[0] - 1] in separators:
                         used_separators.add(b[s[0] - 1])
                         if len(used_separators) > 1:
-                            print("To split into paired reads multiple separators were used: %s" % used_separators)
+                            print(
+                                "To split into paired reads multiple separators were used: %s"
+                                % used_separators
+                            )
                             print("This can lead to wrong assignation.")
-                            print("Use --separator option in bcbio_prepare_samples.py to specify only one.")
+                            print(
+                                "Use --separator option in bcbio_prepare_samples.py to specify only one."
+                            )
                             print("For instance, --separator R.")
                         matches.update([in_file, comp_file])
                         used.update([in_file, comp_file])
