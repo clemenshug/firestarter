@@ -64,7 +64,7 @@ class JobParameter(object):
                 raise ValueError(
                     f"Expected only a single unique value for {self.name} in ", str(v)
                 )
-            return v[0]
+            return v.iloc[0]
         return list(v)
 
     def set_param_meta(self, data, meta):
