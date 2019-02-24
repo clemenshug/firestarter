@@ -97,7 +97,6 @@ class BcbioJob(abc.ABC):
         self.working_directory = normalize_path(working_directory)
         self.data = data
         self.slurm_params = slurm_params
-        self.files_location = None
         self.run_directory = None
         self.debug = debug
         self.check_data(data)
@@ -123,7 +122,9 @@ class BcbioJob(abc.ABC):
 
     @property
     def file_destinations(self):
-        return {p.name: p.destination for p in self.file_params}
+        if not self.run_directory:
+            raise RuntimeError("Run directory not set yet, destinations unknown")
+        return {p.name: self.run_directory / p.destination for p in self.file_params}
 
     @property
     def required_params(self):
@@ -142,15 +143,15 @@ class BcbioJob(abc.ABC):
         self.run_directory.mkdir(exist_ok=False)
         (self.run_directory / "config").mkdir(exist_ok=False)
         (self.run_directory / "work").mkdir(exist_ok=False)
-        destinations = [self.run_directory / d for d in self.file_destinations.values()]
-        for d in destinations:
+        for d in self.file_destinations.values():
             d.mkdir(exist_ok=True)
 
     def transfer_files(self, data):
         data = data.copy()
         file_transfers = {}
+        destinations = self.file_destinations
         for p in self.file_params:
-            file_transfers[p.name] = (list(set(data[p.name])), p.destination)
+            file_transfers[p.name] = (list(set(data[p.name])), destinations[p.name])
         locations = transfer_files_batch(file_transfers)
         for n, l in locations.items():
             o, d = list(zip(*l))
