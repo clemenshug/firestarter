@@ -23,7 +23,69 @@ SLURM_PARAMS_DEFAULT = {
 }
 
 
+class JobParameter(object):
+    def __init__(self, name, path, default=None, per_sample=True, required=True):
+        self.name = name
+        self.default = default
+        self.path = path
+        self.per_sample = per_sample
+        self.required = required
+
+    @staticmethod
+    def _nested_set(d, path, value):
+        # From https://stackoverflow.com/a/13688108/4603385
+        if not isinstance(path, typing.List):
+            path = [path]
+        for key in path[:-1]:
+            d = d.setdefault(key, {})
+        d[path[-1]] = value
+
+    def add_default_data(self, data, job=None):
+        data = data.copy()
+        if self.name not in data:
+            if self.default is None:
+                raise ValueError("{self.name} not found in ", str(data))
+            if callable(self.default):
+                data[self.name] = self.default(job)
+            else:
+                data[self.name] = self.default
+        return data
+
+    def get_sample_param(self, data, job=None):
+        if self.name not in data:
+            if self.default is None:
+                raise ValueError("{self.name} not found in ", str(data))
+            if callable(self.default):
+                return self.default(job)
+            return self.default
+        v = data[self.name]
+        if self.per_sample:
+            if not len(set(v)) == 1:
+                raise ValueError(
+                    f"Expected only a single unique value for {self.name} in ",
+                    str(v)
+                )
+            return v[0]
+        return list(v)
+
+    def set_param_meta(self, data, meta):
+        m = self._nested_set(meta, self.path, self.get_sample_param(data))
+        return m
+
+
+class FileJobParameter(JobParameter):
+    def __init__(self, *args, destination = "data", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.destination = destination
+
+
+BCBIOJOB_PARAMS = [
+    JobParameter("id", "description"),
+]
+
 class BcbioJob(abc.ABC):
+    params = BCBIOJOB_PARAMS
+
     def __init__(
         self,
         name,
@@ -35,22 +97,38 @@ class BcbioJob(abc.ABC):
         self.name = name
         self.working_directory = normalize_path(working_directory)
         self.data = data
-        self.data_transformed = None
-        self.files_destination = {}
         self.slurm_params = slurm_params
         self.files_location = None
-        self.run_id = None
         self.run_directory = None
         self.debug = debug
+        self.check_data(data)
 
-    def check_data(self):
-        required_cols = {"id"} | set(self.files_destination.keys())
+    def check_data(self, data):
+        required_cols = self.required_params
         missing_cols = required_cols - set(self.data)
         if len(missing_cols) > 0:
             raise ValueError(
                 "The following required columns are missing from data:\n",
                 str(missing_cols),
             )
+
+    def add_defaults(self, data):
+        data = data.copy()
+        for p in self.required_params:
+            data = p.add_default_data(data, job=self)
+        return data
+
+    @property
+    def file_params(self):
+        return [p for p in self.params if isinstance(p, FileJobParameter)]
+
+    @property
+    def file_destinations(self):
+        return {p.name: p.destination for p in self.file_params}
+
+    @property
+    def required_params(self):
+        return [p for p in self.params if p.required]
 
     def prepare_working_directory(self):
         self.working_directory.mkdir(exist_ok=True)
@@ -65,49 +143,47 @@ class BcbioJob(abc.ABC):
         self.run_directory.mkdir(exist_ok=False)
         (self.run_directory / "config").mkdir(exist_ok=False)
         (self.run_directory / "work").mkdir(exist_ok=False)
-        self.files_destination = {
-            k: self.run_directory / d for k, d in self.files_destination.items()
-        }
-        for d in self.files_destination.values():
+        destinations = [self.run_directory / d for d in self.file_destinations.values()]
+        for d in destinations:
             d.mkdir(exist_ok=True)
 
-    def transfer_files(self):
+    def transfer_files(self, data):
+        data = data.copy()
         file_transfers = {}
-        for n in self.data:
-            if n not in self.files_destination:
-                continue
-            file_transfers[n] = (list(set(self.data[n])), self.files_destination[n])
+        for p in self.file_params:
+            file_transfers[p.name] = (list(set(data[p.name])), p.destination)
         locations = transfer_files_batch(file_transfers)
         for n, l in locations.items():
             o, d = list(zip(*l))
             new_loc = pd.DataFrame({n: o, f"{n}_moved": d})
-            transformed = pd.merge(self.data_transformed, new_loc, how="left", on=n)
-            transformed[n] = transformed[f"{n}_moved"]
-            transformed.drop(columns=f"{n}_moved", inplace=True)
-            if not all(p.exists() for p in transformed[n]):
+            data = pd.merge(data, new_loc, how="left", on=n)
+            data[n] = data[f"{n}_moved"]
+            data.drop(columns=f"{n}_moved", inplace=True)
+            if not all(p.exists() for p in data[n]):
                 raise RuntimeError(
                     "Files not found at new location:\n",
-                    str(list(filter(lambda p: not p.exists(), transformed[n]))),
+                    str(list(filter(lambda p: not p.exists(), data[n]))),
                 )
-            self.data_transformed = transformed
+        return data
 
-    def merge_files(self):
-        pass
+    def merge_files(self, data):
+        return data
+
+    def _prepare_run(self):
+        self.prepare_working_directory()
+        self.prepare_run_directory()
+        data_defaults = self.add_defaults(self.data)
+        data_normalized = self.normalize_paths(data_defaults)
+        data_transferred = self.transfer_files(data_normalized)
+        data_merged = self.merge_files(data_transferred)
+        self.prepare_meta(data_merged)
 
     def prepare_run(self):
         if self.debug:
-            self.prepare_working_directory()
-            self.prepare_run_directory()
-            self.transfer_files()
-            self.merge_files()
-            self.prepare_meta()
+            self._prepare_run()
             return
         try:
-            self.prepare_working_directory()
-            self.prepare_run_directory()
-            self.transfer_files()
-            self.merge_files()
-            self.prepare_meta()
+            self._prepare_run()
         except Exception as e:
             if self.run_directory.exists():
                 shutil.rmtree(self.run_directory)
@@ -122,9 +198,11 @@ class BcbioJob(abc.ABC):
         if not cp.returncode == 0:
             raise RuntimeError("Job submission unsuccesfull:\n", cp.stderr)
 
-    def normalize_paths(self):
-        for n in self.files_destination:
-            self.data[n] = self.data[n].map(normalize_path)
+    def normalize_paths(self, data):
+        data = data.copy()
+        for n in (p.name for p in self.file_params):
+            data[n] = data[n].map(normalize_path)
+        return data
 
     @classmethod
     def from_yaml(cls, data):
@@ -136,39 +214,22 @@ class BcbioJob(abc.ABC):
         return cls(**data)
 
     @abc.abstractmethod
-    def prepare_meta(self):
+    def prepare_meta(self, data):
         pass
 
+RNASEQJOB_PARAMS = BCBIOJOB_PARAMS + [
+    JobParameter("id", "description", required=True),
+    FileJobParameter("transcriptome_fasta", ["algorithm", "transcriptome_fasta"], destination = "transcriptome"),
+    FileJobParameter("transcriptome_gtf", ["algorithm", "transcriptome_gtf"], destination = "transcriptome"),
+    FileJobParameter("fastq", "files", destination = "fastq"),
+]
 
 class RnaseqGenericBcbioJob(BcbioJob):
     sample_meta = None
     submit_template = None
+    params = RNASEQJOB_PARAMS
 
-    def __init__(
-        self,
-        name,
-        working_directory,
-        data,
-        slurm_params=SLURM_PARAMS_DEFAULT,
-        debug=False,
-    ):
-        super().__init__(
-            name=name,
-            working_directory=working_directory,
-            data=data,
-            slurm_params=slurm_params,
-            debug=debug,
-        )
-        self.files_destination = {
-            "transcriptome_fasta": "transcriptome",
-            "transcriptome_gtf": "transcriptome",
-            "fastq": "fastq",
-        }
-        self.normalize_paths()
-        self.check_data()
-        self.data_transformed = data.copy(deep=True)
-
-    def merge_files(self):
+    def merge_files(self, data):
         def perform_merge(files, i):
             prefix = os.path.commonprefix(files)
             if len(prefix) == 0:
@@ -198,29 +259,24 @@ class RnaseqGenericBcbioJob(BcbioJob):
                 files_destination = [pathlib.Path(dest)]
             return files_destination
 
-        sample_groups = self.data_transformed.groupby("id")
+        sample_groups = data.groupby("id")
         merged_data = []
         for _, g in sample_groups:
             d = merge_per_sample(g["fastq"])
             m = g.copy().head(n=len(d))
             m["fastq"] = d
             merged_data.append(m)
-        self.data_transformed = pd.concat(merged_data, ignore_index=True)
+        return pd.concat(merged_data, ignore_index=True)
 
-    def prepare_meta(self):
+    def prepare_meta(self, data):
         sample_meta = []
-        data_by_sample = self.data_transformed.groupby("id")
-        for n, g in data_by_sample:
+        data_by_sample = data.groupby("id")
+        for _, g in data_by_sample:
             m = deepcopy(self.sample_meta)
-            m["description"] = n
-            m["files"] = list(str(p) for p in g["fastq"])
-            m["algorithm"]["transcriptome_fasta"] = str(
-                g["transcriptome_fasta"].iloc[0]
-            )
-            m["algorithm"]["transcriptome_gtf"] = str(g["transcriptome_gtf"].iloc[0])
-            meta_cols = set(self.data_transformed) - (
-                {"id"} | set(self.files_destination.keys())
-            )
+            for p in self.params:
+                p.set_param_meta(g, m)
+
+            meta_cols = set(data) - set(p.name for p in self.params)
             m["metadata"] = {c: g[c].iloc[0] for c in meta_cols}
             sample_meta.append(m)
         sample_meta = {
