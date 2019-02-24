@@ -18,6 +18,7 @@ setuptools.setup(
         "paramiko",
         "progressbar2",
         "pandas",
+        "attr",
     ],
     scripts=[
         "bin/o2j",

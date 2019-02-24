@@ -11,6 +11,7 @@ from copy import deepcopy
 from textwrap import dedent
 from datetime import datetime
 from string import Template
+from attr import attrs, attrib
 from .transfer import transfer_files_batch
 from .util import normalize_path, combine_pairs, concatenate_files
 
@@ -23,13 +24,12 @@ SLURM_PARAMS_DEFAULT = {
 }
 
 
+@attrs
 class JobParameter(object):
-    def __init__(self, name, path, default=None, per_sample=True, required=True):
-        self.name = name
-        self.default = default
-        self.path = path
-        self.per_sample = per_sample
-        self.required = required
+    name = attrib()
+    path = attrib()
+    default = attrib(default=None, kw_only=True)
+    per_sample = attrib(default=True, kw_only=True)
 
     @staticmethod
     def _nested_set(d, path, value):
@@ -62,8 +62,7 @@ class JobParameter(object):
         if self.per_sample:
             if not len(set(v)) == 1:
                 raise ValueError(
-                    f"Expected only a single unique value for {self.name} in ",
-                    str(v)
+                    f"Expected only a single unique value for {self.name} in ", str(v)
                 )
             return v[0]
         return list(v)
@@ -73,15 +72,15 @@ class JobParameter(object):
         return m
 
 
+@attrs
 class FileJobParameter(JobParameter):
-    def __init__(self, *args, destination = "data", **kwargs):
-        super().__init__(*args, **kwargs)
-        self.destination = destination
+    destination = attrib(kw_only=True)
 
 
 BCBIOJOB_PARAMS = [
     JobParameter("id", "description"),
 ]
+
 
 class BcbioJob(abc.ABC):
     params = BCBIOJOB_PARAMS
@@ -104,7 +103,7 @@ class BcbioJob(abc.ABC):
         self.check_data(data)
 
     def check_data(self, data):
-        required_cols = self.required_params
+        required_cols = set(p.name for p in self.required_params)
         missing_cols = required_cols - set(self.data)
         if len(missing_cols) > 0:
             raise ValueError(
@@ -128,7 +127,7 @@ class BcbioJob(abc.ABC):
 
     @property
     def required_params(self):
-        return [p for p in self.params if p.required]
+        return [p for p in self.params if p.default is None]
 
     def prepare_working_directory(self):
         self.working_directory.mkdir(exist_ok=True)
@@ -217,12 +216,22 @@ class BcbioJob(abc.ABC):
     def prepare_meta(self, data):
         pass
 
+
 RNASEQJOB_PARAMS = BCBIOJOB_PARAMS + [
-    JobParameter("id", "description", required=True),
-    FileJobParameter("transcriptome_fasta", ["algorithm", "transcriptome_fasta"], destination = "transcriptome"),
-    FileJobParameter("transcriptome_gtf", ["algorithm", "transcriptome_gtf"], destination = "transcriptome"),
-    FileJobParameter("fastq", "files", destination = "fastq"),
+    JobParameter("genome", "genome_build", default="hg38"),
+    FileJobParameter(
+        "transcriptome_fasta",
+        ["algorithm", "transcriptome_fasta"],
+        destination="transcriptome",
+    ),
+    FileJobParameter(
+        "transcriptome_gtf",
+        ["algorithm", "transcriptome_gtf"],
+        destination="transcriptome",
+    ),
+    FileJobParameter("fastq", "files", destination="fastq", per_sample=False),
 ]
+
 
 class RnaseqGenericBcbioJob(BcbioJob):
     sample_meta = None
@@ -307,7 +316,7 @@ class DgeBcbioJob(RnaseqGenericBcbioJob):
         "analysis": "scRNA-seq",
         "description": None,
         "files": None,
-        "genome_build": "hg38",
+        "genome_build": None,
         "metadata": {},
     }
     submit_template = Template(
@@ -329,7 +338,18 @@ class DgeBcbioJob(RnaseqGenericBcbioJob):
     )
 
 
+BULKRNASEQJOB_PARAMS = RNASEQJOB_PARAMS + [
+    JobParameter("aligner", ["algorithm", "aligner"], default="hisat2"),
+    JobParameter(
+        "strandedness",
+        ["algorithm", "strandedness"],
+        default="unstranded",
+    ),
+]
+
+
 class BulkRnaseqBcbioJob(RnaseqGenericBcbioJob):
+    params = BULKRNASEQJOB_PARAMS
     sample_meta = {
         "algorithm": {
             "aligner": "hisat2",
@@ -340,7 +360,7 @@ class BulkRnaseqBcbioJob(RnaseqGenericBcbioJob):
         "analysis": "RNA-seq",
         "description": None,
         "files": None,
-        "genome_build": "hg38",
+        "genome_build": None,
         "metadata": {},
     }
     submit_template = Template(
