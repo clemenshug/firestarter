@@ -2,6 +2,7 @@ import sys
 import getpass
 import os
 import re
+import tempfile
 import typing
 import itertools
 import operator
@@ -9,6 +10,7 @@ import shutil
 import pathlib
 import yaml
 import progressbar
+import progressbar as widgets
 from shutil import copyfile
 from paramiko import SSHClient
 from scp import SCPClient
@@ -42,20 +44,33 @@ if not isinstance(ssh_config, typing.List):
 
 
 class SCPProgressTracker(object):
+    pb_widgets = [
+        widgets.Percentage(),
+        " ",
+        widgets.DataSize(),
+        " ",
+        widgets.FileTransferSpeed(),
+        " ",
+        widgets.Timer(),
+        " ",
+        widgets.AdaptiveETA(),
+    ]
+
     def __init__(self):
         self.pbs = {}
 
     def __call__(self, filename, size, sent, peername):
-        h = hash((filename, size, peername))
+        h = (filename, size, peername)
         if h not in self.pbs:
             self.pbs[h] = progressbar.ProgressBar(
-                max_value=100,
+                max_value=size,
+                widgets=self.pb_widgets,
                 # prefix = f"Downloading {filename}"
             )
-        self.pbs[h].update(round(100 * sent / size, ndigits=1))
+        self.pbs[h].update(sent)
         if sent == size:
             self.pbs[h].finish()
-
+            del self.pbs[h]
 
 progress_tracker = SCPProgressTracker()
 
@@ -98,8 +113,39 @@ class SCPTransfer(object):
         self._ssh = ssh
         self._scp = scp
 
-    def get_file(self, source, destination):
-        self._scp.get(source, destination)
+    def get_file_size(self, source):
+        # Hacky way to get remote file size by immediately raising exception
+        # once transfer has started and size is known
+        class SCPFileSizeException(Exception):
+            def __init__(self, message, size=None):
+                super().__init__(message)
+                self.size = size
+
+        def size_progress(filename, size, sent, peername):
+            raise SCPFileSizeException("", size=size)
+
+        size = None
+        scp = SCPClient(self._ssh.get_transport(), progress4=size_progress)
+        try:
+            tmp = tempfile.mkstemp()[1]
+            scp.get(source, tmp)
+        except SCPFileSizeException as e:
+            size = e.size
+        finally:
+            os.remove(tmp)
+            scp.close()
+        return size
+
+    def get_file(self, source, destination, skip_if_exists=True):
+        source = pathlib.Path(source)
+        destination = pathlib.Path(destination)
+        if destination.exists():
+            destination_size = destination.stat().st_size
+            remote_size = self.get_file_size(str(source))
+            if destination_size == remote_size:
+                print(f"File {source} already copied, skipping.")
+                return
+        self._scp.get(str(source), str(destination))
 
 
 def transfer_files_batch(files):

@@ -35,7 +35,13 @@ def main(sys_args):
         "-wd",
         "--working-directory",
         default=pathlib.Path.cwd(),
-        help="Working directory for creating runs. Default: Current directory",
+        help="Working directory where the run directory should be created. Default: Current directory",
+    )
+    parser.add_argument(
+        "-rd",
+        "--run-directory",
+        help="""Directory where the actual run will be executed. Supercedes working directory,
+                if set. Default: Automatically created as subfolder of the working directory.""",
     )
     parser.add_argument(
         "--debug",
@@ -46,6 +52,7 @@ def main(sys_args):
     job_class = o2jobber.job_types[args.job_type]
     job_dict = {
         "working_directory": args.working_directory,
+        "run_directory": args.run_directory,
         "name": args.name if args.name is not None else args.job.stem,
         "debug": args.debug,
     }

@@ -14,7 +14,7 @@ from datetime import datetime
 from string import Template
 from attr import attrs, attrib
 from .transfer import transfer_files_batch
-from .util import normalize_path, combine_pairs, concatenate_files
+from .util import normalize_path, combine_pairs, merge_files
 
 
 SLURM_PARAMS_DEFAULT = {
@@ -108,16 +108,23 @@ class BcbioJob(abc.ABC):
     def __init__(
         self,
         name,
-        working_directory,
         data,
+        working_directory=None,
+        run_directory=None,
         slurm_params=SLURM_PARAMS_DEFAULT,
         debug=False,
     ):
         self.name = name
-        self.working_directory = normalize_path(working_directory)
+        if all(x is None for x in (working_directory, run_directory)):
+            raise ValueError("Either working or run directory must be set")
+        if run_directory:
+            self.run_directory = normalize_path(run_directory)
+            self.working_directory = None
+        else:
+            self.working_directory = normalize_path(working_directory)
+            self.run_directory = None
         self.data = data
         self.slurm_params = slurm_params
-        self.run_directory = None
         self.debug = debug
         self.check_data(data)
 
@@ -155,7 +162,8 @@ class BcbioJob(abc.ABC):
         return [p for p in self.params if p.default is not None]
 
     def prepare_working_directory(self):
-        self.working_directory.mkdir(exist_ok=True)
+        if self.working_directory:
+            self.working_directory.mkdir(exist_ok=True)
 
     def prepare_run_directory(self):
         self.run_id = (
@@ -163,10 +171,11 @@ class BcbioJob(abc.ABC):
             + "_"
             + self.name
         )
-        self.run_directory = self.working_directory / self.run_id
-        self.run_directory.mkdir(exist_ok=False)
-        (self.run_directory / "config").mkdir(exist_ok=False)
-        (self.run_directory / "work").mkdir(exist_ok=False)
+        if not self.run_directory:
+            self.run_directory = self.working_directory / self.run_id
+        self.run_directory.mkdir(exist_ok=True)
+        (self.run_directory / "config").mkdir(exist_ok=True)
+        (self.run_directory / "work").mkdir(exist_ok=True)
         for d in self.file_destinations.values():
             d.mkdir(exist_ok=True)
 
@@ -264,17 +273,14 @@ class RnaseqGenericBcbioJob(BcbioJob):
     params = RNASEQJOB_PARAMS
 
     def merge_files(self, data):
-        def perform_merge(files, i):
-            prefix = os.path.commonprefix(files)
-            if len(prefix) == 0:
-                raise ValueError("Couldn't find prefix for " + str(files))
+        def merge_destination(sample_id, i, files):
+            fastq_dir = self.run_directory / "fastq"
             ext = "".join(pathlib.Path(files[0]).suffixes)
-            dest = f"{prefix}_merged{i}{ext}"
-            print("Merging", " ".join(str(f) for f in files), "into", dest)
-            concatenate_files(files, dest)
-            return dest
+            merged_name = f"{sample_id}_merged_{i}"
+            return fastq_dir / merged_name + ext
 
-        def merge_per_sample(files):
+        def merge_per_sample(sample_id, sample_data):
+            files = sample_data["fastq"]
             pairs = combine_pairs(files)
             if len(pairs) == 1:
                 # Nothing to merge
@@ -286,18 +292,20 @@ class RnaseqGenericBcbioJob(BcbioJob):
                 files_merge = list(zip(*pairs))
                 files_destination = []
                 for i, files in enumerate(files_merge):
-                    dest = perform_merge(files, f"_{i + 1}")
-                    files_destination.append(pathlib.Path(dest))
+                    dest = merge_files(
+                        files, merge_destination(sample_id, i + 1, files)
+                    )
+                    files_destination.append(dest)
             else:
-                dest = perform_merge(pairs, "")
-                files_destination = [pathlib.Path(dest)]
+                dest = merge_files(pairs, merge_destination(sample_id, 1, pairs))
+                files_destination = [dest]
             return files_destination
 
         sample_groups = data.groupby("id")
         merged_data = []
-        for _, g in sample_groups:
-            d = merge_per_sample(g["fastq"])
-            m = g.copy().head(n=len(d))
+        for sample_id, sample_data in sample_groups:
+            d = merge_per_sample(sample_id, sample_data)
+            m = sample_data.copy().head(n=len(d))
             m["fastq"] = d
             merged_data.append(m)
         return pd.concat(merged_data, ignore_index=True)
@@ -368,7 +376,10 @@ BULKRNASEQJOB_PARAMS = RNASEQJOB_PARAMS + [
     JobParameter("strandedness", ["algorithm", "strandedness"], default="unstranded"),
     JobParameter("aligner", ["algorithm", "aligner"], default="hisat2"),
     FileJobParameter(
-        "spikein_fasta", ["algorithm", "spikein_fasta"], default=EMPTY_DEFAULT
+        "spikein_fasta",
+        ["algorithm", "spikein_fasta"],
+        default=EMPTY_DEFAULT,
+        destination="transcriptome",
     ),
 ]
 

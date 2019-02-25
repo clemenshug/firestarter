@@ -33,6 +33,23 @@ def concatenate_files(source_files, destination):
                 shutil.copyfileobj(in_handle, out_handle, length=16 * 1024 * 1024)
 
 
+def merge_files(files, destination, skip_if_exists=True):
+    if destination.exists():
+        combined_size = sum(f.stat().st_size for f in files)
+        dest_size = destination.stat().st_size
+        if dest_size == combined_size:
+            print(
+                f"Merged file {destination} already exists with correct size, skipping."
+            )
+            return destination
+        print(
+            f"Merged file {destination} already exists, {dest_size} instead of {combined_size}"
+        )
+    print("Merging", " ".join(str(f) for f in files), "into", destination)
+    concatenate_files(files, destination)
+    return destination
+
+
 def parse_csv(p):
     with open(p, "r") as f:
         reader = csv.DictReader(f)
