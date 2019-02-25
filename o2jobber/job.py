@@ -319,7 +319,7 @@ class RnaseqGenericBcbioJob(BcbioJob):
                 p.set_param_meta(g, m)
 
             meta_cols = set(data) - set(p.name for p in self.params)
-            m["metadata"] = {c: g[c].iloc[0] for c in meta_cols}
+            m["metadata"] = {c: list(g[c])[0] for c in meta_cols}
             sample_meta.append(m)
         sample_meta = {
             "details": sample_meta,
