@@ -277,7 +277,7 @@ class RnaseqGenericBcbioJob(BcbioJob):
             fastq_dir = self.run_directory / "fastq"
             ext = "".join(pathlib.Path(files[0]).suffixes)
             merged_name = f"{sample_id}_merged_{i}"
-            return fastq_dir / merged_name + ext
+            return fastq_dir / (merged_name + ext)
 
         def merge_per_sample(sample_id, sample_data):
             files = sample_data["fastq"]
