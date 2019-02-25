@@ -5,6 +5,7 @@ import itertools
 import typing
 import subprocess
 import shutil
+import numpy as np
 import pandas as pd
 import yaml
 from copy import deepcopy
@@ -30,6 +31,7 @@ class JobParameter(object):
     path = attrib()
     default = attrib(default=None, kw_only=True)
     per_sample = attrib(default=True, kw_only=True)
+    _compatible_types = tuple(yaml.SafeDumper.yaml_representers.keys())[:-1]
 
     @staticmethod
     def _nested_set(d, path, value):
@@ -39,6 +41,15 @@ class JobParameter(object):
         for key in path[:-1]:
             d = d.setdefault(key, {})
         d[path[-1]] = value
+
+    @staticmethod
+    def _basic_type(value):
+        value = list(value)
+        if not isinstance(value[0], JobParameter._compatible_types):
+            value = list(str(x) for x in value)
+        if len(value) > 1:
+            return value
+        return value[0]
 
     def add_default_data(self, data, job=None):
         data = data.copy()
@@ -52,20 +63,20 @@ class JobParameter(object):
         return data
 
     def get_sample_param(self, data, job=None):
-        if self.name not in data:
-            if self.default is None:
-                raise ValueError("{self.name} not found in ", str(data))
-            if callable(self.default):
-                return self.default(job)
-            return self.default
+        # if self.name not in data:
+        #     if self.default is None:
+        #         raise ValueError("{self.name} not found in ", str(data))
+        #     if callable(self.default):
+        #         return self.default(job)
+        #     return self.default
         v = data[self.name]
         if self.per_sample:
             if not len(set(v)) == 1:
                 raise ValueError(
                     f"Expected only a single unique value for {self.name} in ", str(v)
                 )
-            return v.iloc[0]
-        return list(v)
+            return self._basic_type(v.iloc[0])
+        return self._basic_type(v)
 
     def set_param_meta(self, data, meta):
         m = self._nested_set(meta, self.path, self.get_sample_param(data))
