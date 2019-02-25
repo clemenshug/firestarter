@@ -1,7 +1,7 @@
 import setuptools
 
 setuptools.setup(
-    name="o2jobber",
+    name="firestarter",
     version="0.0.1",
     author="Clemens Hug",
     author_email="clemens.hug@gmail.com",
@@ -21,6 +21,6 @@ setuptools.setup(
         "attr",
     ],
     scripts=[
-        "bin/o2j",
+        "bin/firestarter",
     ],
 )

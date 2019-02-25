@@ -5,17 +5,17 @@ import csv
 import pathlib
 import sys
 import pandas as pd
-import o2jobber
+import firestarter
 from copy import deepcopy
-from o2jobber.util import parse_csv
+from firestarter.util import parse_csv
 
 
 def main(sys_args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "job_type",
-        choices=list(o2jobber.job_types.keys()),
-        help="Type of job, one of " + ", ".join(o2jobber.job_types.keys()),
+        choices=list(firestarter.job_types.keys()),
+        help="Type of job, one of " + ", ".join(firestarter.job_types.keys()),
     )
     parser.add_argument(
         "job", type=pathlib.Path, help="Job description .yaml or .csv file"
@@ -49,7 +49,7 @@ def main(sys_args):
         help="Enable debug mode. More messages. Temporary files are not deleted.",
     )
     args = parser.parse_args(sys_args)
-    job_class = o2jobber.job_types[args.job_type]
+    job_class = firestarter.job_types[args.job_type]
     job_dict = {
         "working_directory": args.working_directory,
         "run_directory": args.run_directory,
