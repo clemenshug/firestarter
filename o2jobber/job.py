@@ -75,7 +75,7 @@ class JobParameter(object):
                 raise ValueError(
                     f"Expected only a single unique value for {self.name} in ", str(v)
                 )
-            return self._basic_type(v.iloc[0])
+            return self._basic_type([v.iloc[0]])
         return self._basic_type(v)
 
     def set_param_meta(self, data, meta):
@@ -123,7 +123,7 @@ class BcbioJob(abc.ABC):
 
     def add_defaults(self, data):
         data = data.copy()
-        for p in self.required_params:
+        for p in self.optional_params:
             data = p.add_default_data(data, job=self)
         return data
 
@@ -140,6 +140,10 @@ class BcbioJob(abc.ABC):
     @property
     def required_params(self):
         return [p for p in self.params if p.default is None]
+
+    @property
+    def optional_params(self):
+        return [p for p in self.params if p.default is not None]
 
     def prepare_working_directory(self):
         self.working_directory.mkdir(exist_ok=True)
