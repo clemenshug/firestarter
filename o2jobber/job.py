@@ -25,6 +25,9 @@ SLURM_PARAMS_DEFAULT = {
 }
 
 
+EMPTY_DEFAULT = object()
+
+
 @attrs
 class JobParameter(object):
     name = attrib()
@@ -58,17 +61,20 @@ class JobParameter(object):
                 raise ValueError("{self.name} not found in ", str(data))
             if callable(self.default):
                 data[self.name] = self.default(job)
+            elif self.default is EMPTY_DEFAULT:
+                # Don't add column, is supposed to be empty
+                return data
             else:
                 data[self.name] = self.default
         return data
 
     def get_sample_param(self, data, job=None):
-        # if self.name not in data:
-        #     if self.default is None:
-        #         raise ValueError("{self.name} not found in ", str(data))
-        #     if callable(self.default):
-        #         return self.default(job)
-        #     return self.default
+        if self.name not in data:
+            if self.default is EMPTY_DEFAULT:
+                return EMPTY_DEFAULT
+            raise RuntimeError(
+                f"Something went wrong, data should have column {self.name}"
+            )
         v = data[self.name]
         if self.per_sample:
             if not len(set(v)) == 1:
@@ -79,7 +85,10 @@ class JobParameter(object):
         return self._basic_type(v)
 
     def set_param_meta(self, data, meta):
-        m = self._nested_set(meta, self.path, self.get_sample_param(data))
+        v = self.get_sample_param(data)
+        if v is EMPTY_DEFAULT:
+            return m
+        m = self._nested_set(meta, self.path, v)
         return m
 
 
@@ -356,10 +365,10 @@ class DgeBcbioJob(RnaseqGenericBcbioJob):
 
 BULKRNASEQJOB_PARAMS = RNASEQJOB_PARAMS + [
     JobParameter("aligner", ["algorithm", "aligner"], default="hisat2"),
-    JobParameter(
-        "strandedness",
-        ["algorithm", "strandedness"],
-        default="unstranded",
+    JobParameter("strandedness", ["algorithm", "strandedness"], default="unstranded"),
+    JobParameter("aligner", ["algorithm", "aligner"], default="hisat2"),
+    FileJobParameter(
+        "spikein_fasta", ["algorithm", "spikein_fasta"], default=EMPTY_DEFAULT
     ),
 ]
 
@@ -368,7 +377,7 @@ class BulkRnaseqBcbioJob(RnaseqGenericBcbioJob):
     params = BULKRNASEQJOB_PARAMS
     sample_meta = {
         "algorithm": {
-            "aligner": "hisat2",
+            "aligner": None,
             "strandedness": "unstranded",
             "transcriptome_fasta": None,
             "transcriptome_gtf": None,
