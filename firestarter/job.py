@@ -13,7 +13,18 @@ from textwrap import dedent
 from datetime import datetime
 from pathlib import Path
 from string import Template
-from typing import Union, Sequence, List, Mapping, Tuple, Optional, Text, Dict, Any, Callable
+from typing import (
+    Union,
+    Sequence,
+    List,
+    Mapping,
+    Tuple,
+    Optional,
+    Text,
+    Dict,
+    Any,
+    Callable,
+)
 from attr import attrs, attrib
 from .transfer import transfer_files_batch
 from .util import normalize_path, combine_pairs, merge_files, PathLike
@@ -101,10 +112,10 @@ def merge_rule_none(
 ) -> pd.DataFrame:
     return data
 
+
 def merge_rule_fastq(
     job: "BcbioJob", parameter: JobParameter, data: pd.DataFrame
 ) -> pd.DataFrame:
-
     def merge_destination(sample_id, i, files):
         ext = "".join(pathlib.Path(files[0]).suffixes)
         merged_name = f"{sample_id}_merged_{i}"
@@ -123,9 +134,7 @@ def merge_rule_fastq(
             files_merge = list(zip(*pairs))
             files_destination = []
             for i, files in enumerate(files_merge):
-                dest = merge_files(
-                    files, merge_destination(sample_id, i + 1, files)
-                )
+                dest = merge_files(files, merge_destination(sample_id, i + 1, files))
                 files_destination.append(dest)
         else:
             dest = merge_files(pairs, merge_destination(sample_id, 1, pairs))
@@ -196,20 +205,25 @@ class BcbioJob(abc.ABC):
             ValueError: Columns are missing or non-unique values in per sample columns.
         """
         required_cols = set(p.name for p in self.required_params)
-        missing_cols = required_cols - set(self.data)
+        missing_cols = required_cols - set(data)
         if len(missing_cols) > 0:
             raise ValueError(
                 "The following required columns are missing from data:\n",
                 str(missing_cols),
             )
-        per_sample_cols = list(p.name for p in self.per_sample_params)
+        # All columns that are metadata and per-sample job paramters need to
+        # have a single unique value per sample id in the job data
+        per_sample_cols = list(
+            (set(self.meta_cols) | set(p.name for p in self.per_sample_params))
+            & set(data)
+        )
         sample_groups = data.groupby("id")
         for g, d in sample_groups:
             unique_vals = d[per_sample_cols].agg(lambda x: len(x.unique())) == 1
             if not unique_vals.all():
                 raise ValueError(
                     f"Sample {g} has multiple values for the per sample columns ",
-                    str(list(unique_vals.index[unique_vals]))
+                    str(list(unique_vals.index[unique_vals])),
                 )
 
     def add_defaults(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -253,6 +267,12 @@ class BcbioJob(abc.ABC):
         per sample is allowed."""
         return [p for p in self.params if p.per_sample]
 
+    @property
+    def meta_cols(self) -> List[Text]:
+        """Gets a list of column names in the job data that are not job parameters
+        but metadata."""
+        return list(set(self.data) - set(p.name for p in self.params))
+
     def prepare_working_directory(self) -> None:
         if self.working_directory:
             self.working_directory.mkdir(exist_ok=True)
@@ -288,9 +308,7 @@ class BcbioJob(abc.ABC):
         destinations = self.file_destinations
         for p in (x for x in self.file_params if x.name in data):
             unique_files = list(set(data[p.name]))
-            transfers = list(
-                zip(unique_files, itertools.repeat(destinations[p.name]))
-            )
+            transfers = list(zip(unique_files, itertools.repeat(destinations[p.name])))
             file_transfers[p.name] = transfers
         locations = transfer_files_batch(file_transfers)
         for n, l in locations.items():
@@ -312,8 +330,9 @@ class BcbioJob(abc.ABC):
             p for p in self.file_params if p.merge_rule is not merge_rule_none
         ]
         if len(merge_params) > 1:
-            raise RuntimeError("Merging more than one of the file inputs is currently"
-                               "not supported")
+            raise RuntimeError(
+                "Merging more than one of the file inputs is currently not supported"
+            )
         p = merge_params[0]
         data_merged = p.merge_files(self, data)
         return data_merged
@@ -411,9 +430,7 @@ class RnaseqGenericBcbioJob(BcbioJob):
             m = deepcopy(self.sample_meta)
             for p in self.params:
                 p.set_param_meta(g, m)
-
-            meta_cols = set(data) - set(p.name for p in self.params)
-            m["metadata"] = {c: list(g[c])[0] for c in meta_cols}
+            m["metadata"] = {c: list(g[c])[0] for c in self.meta_cols}
             sample_meta_list.append(m)
         sample_meta = {
             "details": sample_meta_list,
