@@ -13,7 +13,7 @@ from textwrap import dedent
 from datetime import datetime
 from pathlib import Path
 from string import Template
-from typing import Union, Sequence, List, Mapping, Tuple, Optional, Text, Dict, Any
+from typing import Union, Sequence, List, Mapping, Tuple, Optional, Text, Dict, Any, Callable
 from attr import attrs, attrib
 from .transfer import transfer_files_batch
 from .util import normalize_path, combine_pairs, merge_files, PathLike
@@ -27,7 +27,7 @@ SLURM_PARAMS_DEFAULT = {
 }
 
 
-EMPTY_DEFAULT = object()
+EMPTY_DEFAULT = "EMPTY_DEFAULT"
 
 
 @attrs(auto_attribs=True)
@@ -96,9 +96,60 @@ class JobParameter(object):
         self._nested_set(meta, self.path, v)
 
 
+def merge_rule_none(
+    job: "BcbioJob", parameter: JobParameter, data: pd.DataFrame
+) -> pd.DataFrame:
+    return data
+
+def merge_rule_fastq(
+    job: "BcbioJob", parameter: JobParameter, data: pd.DataFrame
+) -> pd.DataFrame:
+
+    def merge_destination(sample_id, i, files):
+        ext = "".join(pathlib.Path(files[0]).suffixes)
+        merged_name = f"{sample_id}_merged_{i}"
+        return job.file_destinations[parameter.name] / "merged" / (merged_name + ext)
+
+    def merge_per_sample(sample_id, sample_data):
+        files = sample_data[parameter.name]
+        pairs = combine_pairs(files)
+        if len(pairs) == 1:
+            # Nothing to merge
+            return files
+        # If one fastq is paired, all should be paired
+        if any(isinstance(p, typing.List) for p in pairs):
+            if not all(isinstance(p, typing.List) for p in pairs):
+                raise ValueError("Pairing error: " + str(pairs))
+            files_merge = list(zip(*pairs))
+            files_destination = []
+            for i, files in enumerate(files_merge):
+                dest = merge_files(
+                    files, merge_destination(sample_id, i + 1, files)
+                )
+                files_destination.append(dest)
+        else:
+            dest = merge_files(pairs, merge_destination(sample_id, 1, pairs))
+            files_destination = [dest]
+        return files_destination
+
+    sample_groups = data.groupby("id")
+    merged_data = []
+    for sample_id, sample_data in sample_groups:
+        d = merge_per_sample(sample_id, sample_data)
+        # Guaranteed by check_data in job class that values are unique per sample
+        m = sample_data.copy().head(n=len(d))
+        m[parameter.name] = d
+        merged_data.append(m)
+    return pd.concat(merged_data, ignore_index=True)
+
+
 @attrs
 class FileJobParameter(JobParameter):
     destination: PathLike = attrib(kw_only=True)
+    merge_rule: Callable = attrib(kw_only=True, default=merge_rule_none)
+
+    def merge_files(self, job: "BcbioJob", data: pd.DataFrame) -> pd.DataFrame:
+        return self.merge_rule(job, self, data)
 
 
 BCBIOJOB_PARAMS = [
@@ -107,6 +158,8 @@ BCBIOJOB_PARAMS = [
 
 
 class BcbioJob(abc.ABC):
+    """Class representing jobs using the Bcbio framework."""
+
     params = BCBIOJOB_PARAMS
     run_directory: Path
     working_directory: Optional[Path]
@@ -135,6 +188,13 @@ class BcbioJob(abc.ABC):
         self.check_data(data)
 
     def check_data(self, data: pd.DataFrame) -> None:
+        """Checks if data supplied to the job instance are complete and valid.
+
+        Args:
+            data: DataFrame describing the job parameters.
+        Raises:
+            ValueError: Columns are missing or non-unique values in per sample columns.
+        """
         required_cols = set(p.name for p in self.required_params)
         missing_cols = required_cols - set(self.data)
         if len(missing_cols) > 0:
@@ -142,8 +202,24 @@ class BcbioJob(abc.ABC):
                 "The following required columns are missing from data:\n",
                 str(missing_cols),
             )
+        per_sample_cols = list(p.name for p in self.per_sample_params)
+        sample_groups = data.groupby("id")
+        for g, d in sample_groups:
+            unique_vals = d[per_sample_cols].agg(lambda x: len(x.unique())) == 1
+            if not unique_vals.all():
+                raise ValueError(
+                    f"Sample {g} has multiple values for the per sample columns ",
+                    str(list(unique_vals.index[unique_vals]))
+                )
 
     def add_defaults(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Adds defaults of optional parameters to job data.
+
+        Args:
+            data: DataFrame describing the job parameters.
+        Returns:
+            DataFrame with optional parameters added, if not present before.
+        """
         data = data.copy()
         for p in self.optional_params:
             data = p.add_default_data(data, job=self)
@@ -151,27 +227,38 @@ class BcbioJob(abc.ABC):
 
     @property
     def file_params(self) -> List[FileJobParameter]:
+        """Gets a list of all job parameters that are file inputs."""
         return [p for p in self.params if isinstance(p, FileJobParameter)]
 
     @property
     def file_destinations(self) -> Dict[Text, Path]:
+        """Gets a dictionary of the destinations of all file inputs for this job."""
         if not self.run_directory:
             raise RuntimeError("Run directory not set yet, destinations unknown")
         return {p.name: self.run_directory / p.destination for p in self.file_params}
 
     @property
     def required_params(self) -> List[JobParameter]:
+        """Gets a list of all required job parameters."""
         return [p for p in self.params if p.default is None]
 
     @property
     def optional_params(self) -> List[JobParameter]:
+        """Gets a list of all optional job parameters."""
         return [p for p in self.params if p.default is not None]
+
+    @property
+    def per_sample_params(self) -> List[JobParameter]:
+        """Gets a list of all job parameters for which only a single value
+        per sample is allowed."""
+        return [p for p in self.params if p.per_sample]
 
     def prepare_working_directory(self) -> None:
         if self.working_directory:
             self.working_directory.mkdir(exist_ok=True)
 
     def prepare_run_directory(self) -> None:
+        """Prepares run directory creating all necessary subdirectories."""
         self.run_id = (
             datetime.now().isoformat(timespec="minutes").replace(":", "_")
             + "_"
@@ -186,6 +273,16 @@ class BcbioJob(abc.ABC):
             d.mkdir(exist_ok=True)
 
     def transfer_files(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Transfers all input files for this job to the run directory.
+
+        Args:
+            data: DataFrame describing the job parameters.
+        Returns:
+            DataFrame with job parameters with file locations updated to reflect
+            their new location within the run directory.
+        Raises:
+            RuntimeError: Files not found at new location.
+        """
         data = data.copy()
         file_transfers = {}
         destinations = self.file_destinations
@@ -210,7 +307,16 @@ class BcbioJob(abc.ABC):
         return data
 
     def merge_files(self, data: pd.DataFrame) -> pd.DataFrame:
-        return data
+        # Unique values for all per-sample cols are guaranteed by check_data method
+        merge_params = [
+            p for p in self.file_params if p.merge_rule is not merge_rule_none
+        ]
+        if len(merge_params) > 1:
+            raise RuntimeError("Merging more than one of the file inputs is currently"
+                               "not supported")
+        p = merge_params[0]
+        data_merged = p.merge_files(self, data)
+        return data_merged
 
     def _prepare_run(self) -> None:
         self.prepare_working_directory()
@@ -297,44 +403,6 @@ class RnaseqGenericBcbioJob(BcbioJob):
         )
     )
     params = RNASEQJOB_PARAMS
-
-    def merge_files(self, data: pd.DataFrame) -> pd.DataFrame:
-        def merge_destination(sample_id, i, files):
-            fastq_dir = self.run_directory / "fastq"
-            ext = "".join(pathlib.Path(files[0]).suffixes)
-            merged_name = f"{sample_id}_merged_{i}"
-            return fastq_dir / (merged_name + ext)
-
-        def merge_per_sample(sample_id, sample_data):
-            files = sample_data["fastq"]
-            pairs = combine_pairs(files)
-            if len(pairs) == 1:
-                # Nothing to merge
-                return files
-            # If one fastq is paired, all should be paired
-            if any(isinstance(p, typing.List) for p in pairs):
-                if not all(isinstance(p, typing.List) for p in pairs):
-                    raise ValueError("Pairing error: " + str(pairs))
-                files_merge = list(zip(*pairs))
-                files_destination = []
-                for i, files in enumerate(files_merge):
-                    dest = merge_files(
-                        files, merge_destination(sample_id, i + 1, files)
-                    )
-                    files_destination.append(dest)
-            else:
-                dest = merge_files(pairs, merge_destination(sample_id, 1, pairs))
-                files_destination = [dest]
-            return files_destination
-
-        sample_groups = data.groupby("id")
-        merged_data = []
-        for sample_id, sample_data in sample_groups:
-            d = merge_per_sample(sample_id, sample_data)
-            m = sample_data.copy().head(n=len(d))
-            m["fastq"] = d
-            merged_data.append(m)
-        return pd.concat(merged_data, ignore_index=True)
 
     def prepare_meta(self, data: pd.DataFrame) -> pd.DataFrame:
         sample_meta_list = []
