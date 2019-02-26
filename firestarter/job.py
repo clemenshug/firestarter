@@ -119,7 +119,9 @@ def merge_rule_fastq(
     def merge_destination(sample_id, i, files):
         ext = "".join(pathlib.Path(files[0]).suffixes)
         merged_name = f"{sample_id}_merged_{i}"
-        return job.file_destinations[parameter.name] / "merged" / (merged_name + ext)
+        merged_dir = job.file_destinations[parameter.name] / "merged"
+        merged_dir.mkdir(exist_ok=True)
+        return  merged_dir / (merged_name + ext)
 
     def merge_per_sample(sample_id, sample_data):
         files = sample_data[parameter.name]
@@ -329,6 +331,8 @@ class BcbioJob(abc.ABC):
         merge_params = [
             p for p in self.file_params if p.merge_rule is not merge_rule_none
         ]
+        if not merge_params:
+            return data
         if len(merge_params) > 1:
             raise RuntimeError(
                 "Merging more than one of the file inputs is currently not supported"
@@ -398,7 +402,13 @@ RNASEQJOB_PARAMS = BCBIOJOB_PARAMS + [
         ["algorithm", "transcriptome_gtf"],
         destination="transcriptome",
     ),
-    FileJobParameter("fastq", "files", destination="fastq", per_sample=False),
+    FileJobParameter(
+        "fastq",
+        "files",
+        destination="fastq",
+        per_sample=False,
+        merge_rule=merge_rule_fastq
+    ),
 ]
 
 
