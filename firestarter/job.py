@@ -76,7 +76,7 @@ class JobParameter(object):
             if self.default is None:
                 raise ValueError("{self.name} not found in ", str(data))
             if callable(self.default):
-                data[self.name] = self.default(job)
+                data[self.name] = self.default(job) # pylint: disable=not-callable
             elif self.default is EMPTY_DEFAULT:
                 # Don't add column, is supposed to be empty
                 return data
@@ -160,7 +160,7 @@ class FileJobParameter(JobParameter):
     merge_rule: Callable = attrib(kw_only=True, default=merge_rule_none)
 
     def merge_files(self, job: "BcbioJob", data: pd.DataFrame) -> pd.DataFrame:
-        return self.merge_rule(job, self, data)
+        return self.merge_rule(job, self, data) # pylint: disable=not-callable
 
 
 BCBIOJOB_PARAMS = [
@@ -186,11 +186,10 @@ class BcbioJob(abc.ABC):
     ):
         self.name = name
         if run_directory:
-            self.run_directory = normalize_path(run_directory)
+            self.run_directory = Path(normalize_path(run_directory))
             self.working_directory = None
         elif working_directory:
-            self.working_directory = normalize_path(working_directory)
-            self.run_directory = None
+            self.working_directory = Path(normalize_path(working_directory))
         else:
             raise ValueError("Either working or run directory must be set")
         self.data = data
@@ -286,7 +285,7 @@ class BcbioJob(abc.ABC):
             + "_"
             + self.name
         )
-        if not self.run_directory:
+        if not getattr(self, "run_directory", False) and self.working_directory:
             self.run_directory = self.working_directory / self.run_id
         self.run_directory.mkdir(exist_ok=True)
         (self.run_directory / "config").mkdir(exist_ok=True)
