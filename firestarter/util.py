@@ -3,29 +3,25 @@ import os
 import pathlib
 import re
 import shutil
+from pathlib import Path
+from typing import Union, Sequence, List, Mapping, Tuple, Optional
+
+
+PathLike = Union[Path, str]
 
 
 remote_pattern = re.compile("^(.+):(.+)$")
 
 
-def normalize_path(p):
+def normalize_path(p: PathLike) -> PathLike:
     remote_match = remote_pattern.match(str(p))
     if remote_match is not None:
         return str(p)
     return pathlib.Path(p).expanduser().resolve()
 
 
-def extract_host(p):
-    remote_match = remote_pattern.match(str(p))
-    if remote_match is None:
-        return (None, p)
-    return remote_match.group(1, 2)
-
-
-def concatenate_files(source_files, destination):
-    source_files = [pathlib.Path(p) for p in source_files]
-    destination = pathlib.Path(destination)
-    if not all(p.exists() for p in source_files):
+def concatenate_files(source_files: Sequence[PathLike], destination: PathLike) -> None:
+    if not all(Path(p).exists() for p in source_files):
         raise ValueError("One of the source files doesn't exist")
     with open(destination, "wb") as out_handle:
         for s in source_files:
@@ -33,7 +29,9 @@ def concatenate_files(source_files, destination):
                 shutil.copyfileobj(in_handle, out_handle, length=16 * 1024 * 1024)
 
 
-def merge_files(files, destination, skip_if_exists=True):
+def merge_files(
+    files: Sequence[Path], destination: Path, skip_if_exists: bool = True
+) -> Path:
     if destination.exists():
         combined_size = sum(f.stat().st_size for f in files)
         dest_size = destination.stat().st_size
@@ -50,7 +48,7 @@ def merge_files(files, destination, skip_if_exists=True):
     return destination
 
 
-def parse_csv(p):
+def parse_csv(p: PathLike):
     with open(p, "r") as f:
         reader = csv.DictReader(f)
         csv_contents = list(reader)

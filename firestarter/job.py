@@ -11,14 +11,16 @@ import yaml
 from copy import deepcopy
 from textwrap import dedent
 from datetime import datetime
+from pathlib import Path
 from string import Template
+from typing import Union, Sequence, List, Mapping, Tuple, Optional, Text, Dict, Any
 from attr import attrs, attrib
 from .transfer import transfer_files_batch
-from .util import normalize_path, combine_pairs, merge_files
+from .util import normalize_path, combine_pairs, merge_files, PathLike
 
 
 SLURM_PARAMS_DEFAULT = {
-    "time_limit": "0-8:00",
+    "time_limit": "0-12:00",
     "cores": "12",
     "queue": "short",
     "mem": "8000",
@@ -28,16 +30,16 @@ SLURM_PARAMS_DEFAULT = {
 EMPTY_DEFAULT = object()
 
 
-@attrs
+@attrs(auto_attribs=True)
 class JobParameter(object):
-    name = attrib()
-    path = attrib()
-    default = attrib(default=None, kw_only=True)
-    per_sample = attrib(default=True, kw_only=True)
+    name: Text
+    path: Union[Text, List[Text]]
+    default: Optional[Any] = attrib(default=None, kw_only=True)
+    per_sample: bool = attrib(default=True, kw_only=True)
     _compatible_types = tuple(yaml.SafeDumper.yaml_representers.keys())[:-1]
 
     @staticmethod
-    def _nested_set(d, path, value):
+    def _nested_set(d: Dict, path: Union[Text, List[Text]], value: Any) -> None:
         # From https://stackoverflow.com/a/13688108/4603385
         if not isinstance(path, typing.List):
             path = [path]
@@ -46,15 +48,18 @@ class JobParameter(object):
         d[path[-1]] = value
 
     @staticmethod
-    def _basic_type(value):
-        value = list(value)
+    def _basic_type(value: Any) -> Any:
+        if not isinstance(value, Sequence):
+            value = list(value)
         if not isinstance(value[0], JobParameter._compatible_types):
             value = list(str(x) for x in value)
         if len(value) > 1:
             return value
         return value[0]
 
-    def add_default_data(self, data, job=None):
+    def add_default_data(
+        self, data: pd.DataFrame, job: "BcbioJob" = None
+    ) -> pd.DataFrame:
         data = data.copy()
         if self.name not in data:
             if self.default is None:
@@ -68,7 +73,7 @@ class JobParameter(object):
                 data[self.name] = self.default
         return data
 
-    def get_sample_param(self, data, job=None):
+    def get_sample_param(self, data: pd.DataFrame, job: "BcbioJob" = None) -> Any:
         if self.name not in data:
             if self.default is EMPTY_DEFAULT:
                 return EMPTY_DEFAULT
@@ -84,17 +89,16 @@ class JobParameter(object):
             return self._basic_type([v.iloc[0]])
         return self._basic_type(v)
 
-    def set_param_meta(self, data, meta):
+    def set_param_meta(self, data: pd.DataFrame, meta: Dict) -> None:
         v = self.get_sample_param(data)
         if v is EMPTY_DEFAULT:
-            return m
-        m = self._nested_set(meta, self.path, v)
-        return m
+            return
+        self._nested_set(meta, self.path, v)
 
 
 @attrs
 class FileJobParameter(JobParameter):
-    destination = attrib(kw_only=True)
+    destination: PathLike = attrib(kw_only=True)
 
 
 BCBIOJOB_PARAMS = [
@@ -104,31 +108,33 @@ BCBIOJOB_PARAMS = [
 
 class BcbioJob(abc.ABC):
     params = BCBIOJOB_PARAMS
+    run_directory: Path
+    working_directory: Optional[Path]
 
     def __init__(
         self,
-        name,
-        data,
-        working_directory=None,
-        run_directory=None,
-        slurm_params=SLURM_PARAMS_DEFAULT,
-        debug=False,
+        name: Text,
+        data: pd.DataFrame,
+        working_directory: Optional[PathLike] = None,
+        run_directory: Optional[PathLike] = None,
+        slurm_params: Mapping = SLURM_PARAMS_DEFAULT,
+        debug: bool = False,
     ):
         self.name = name
-        if all(x is None for x in (working_directory, run_directory)):
-            raise ValueError("Either working or run directory must be set")
         if run_directory:
             self.run_directory = normalize_path(run_directory)
             self.working_directory = None
-        else:
+        elif working_directory:
             self.working_directory = normalize_path(working_directory)
             self.run_directory = None
+        else:
+            raise ValueError("Either working or run directory must be set")
         self.data = data
         self.slurm_params = slurm_params
         self.debug = debug
         self.check_data(data)
 
-    def check_data(self, data):
+    def check_data(self, data: pd.DataFrame) -> None:
         required_cols = set(p.name for p in self.required_params)
         missing_cols = required_cols - set(self.data)
         if len(missing_cols) > 0:
@@ -137,35 +143,35 @@ class BcbioJob(abc.ABC):
                 str(missing_cols),
             )
 
-    def add_defaults(self, data):
+    def add_defaults(self, data: pd.DataFrame) -> pd.DataFrame:
         data = data.copy()
         for p in self.optional_params:
             data = p.add_default_data(data, job=self)
         return data
 
     @property
-    def file_params(self):
+    def file_params(self) -> List[FileJobParameter]:
         return [p for p in self.params if isinstance(p, FileJobParameter)]
 
     @property
-    def file_destinations(self):
+    def file_destinations(self) -> Dict[Text, Path]:
         if not self.run_directory:
             raise RuntimeError("Run directory not set yet, destinations unknown")
         return {p.name: self.run_directory / p.destination for p in self.file_params}
 
     @property
-    def required_params(self):
+    def required_params(self) -> List[JobParameter]:
         return [p for p in self.params if p.default is None]
 
     @property
-    def optional_params(self):
+    def optional_params(self) -> List[JobParameter]:
         return [p for p in self.params if p.default is not None]
 
-    def prepare_working_directory(self):
+    def prepare_working_directory(self) -> None:
         if self.working_directory:
             self.working_directory.mkdir(exist_ok=True)
 
-    def prepare_run_directory(self):
+    def prepare_run_directory(self) -> None:
         self.run_id = (
             datetime.now().isoformat(timespec="minutes").replace(":", "_")
             + "_"
@@ -179,12 +185,16 @@ class BcbioJob(abc.ABC):
         for d in self.file_destinations.values():
             d.mkdir(exist_ok=True)
 
-    def transfer_files(self, data):
+    def transfer_files(self, data: pd.DataFrame) -> pd.DataFrame:
         data = data.copy()
         file_transfers = {}
         destinations = self.file_destinations
-        for p in self.file_params:
-            file_transfers[p.name] = (list(set(data[p.name])), destinations[p.name])
+        for p in (x for x in self.file_params if x.name in data):
+            unique_files = list(set(data[p.name]))
+            transfers = list(
+                zip(unique_files, itertools.repeat(destinations[p.name]))
+            )
+            file_transfers[p.name] = transfers
         locations = transfer_files_batch(file_transfers)
         for n, l in locations.items():
             o, d = list(zip(*l))
@@ -199,10 +209,10 @@ class BcbioJob(abc.ABC):
                 )
         return data
 
-    def merge_files(self, data):
+    def merge_files(self, data: pd.DataFrame) -> pd.DataFrame:
         return data
 
-    def _prepare_run(self):
+    def _prepare_run(self) -> None:
         self.prepare_working_directory()
         self.prepare_run_directory()
         data_defaults = self.add_defaults(self.data)
@@ -211,7 +221,7 @@ class BcbioJob(abc.ABC):
         data_merged = self.merge_files(data_transferred)
         self.prepare_meta(data_merged)
 
-    def prepare_run(self):
+    def prepare_run(self) -> None:
         if self.debug:
             self._prepare_run()
             return
@@ -222,7 +232,7 @@ class BcbioJob(abc.ABC):
                 shutil.rmtree(self.run_directory)
             raise RuntimeError("Error during run directory preparation") from e
 
-    def submit_run(self):
+    def submit_run(self) -> None:
         cp = subprocess.run(
             ["sbatch", f"{self.name}_run.sh"],
             capture_output=True,
@@ -231,9 +241,9 @@ class BcbioJob(abc.ABC):
         if not cp.returncode == 0:
             raise RuntimeError("Job submission unsuccesfull:\n", cp.stderr)
 
-    def normalize_paths(self, data):
+    def normalize_paths(self, data: pd.DataFrame) -> pd.DataFrame:
         data = data.copy()
-        for n in (p.name for p in self.file_params):
+        for n in (p.name for p in self.file_params if p.name in data):
             data[n] = data[n].map(normalize_path)
         return data
 
@@ -268,11 +278,27 @@ RNASEQJOB_PARAMS = BCBIOJOB_PARAMS + [
 
 
 class RnaseqGenericBcbioJob(BcbioJob):
-    sample_meta = None
-    submit_template = None
+    sample_meta: Dict[Text, Any]
+    submit_template = Template(
+        dedent(
+            """\
+    #!/bin/sh
+    #SBATCH -p $queue
+    #SBATCH -J $run_id
+    #SBATCH -o run.o
+    #SBATCH -e run.e
+    #SBATCH -t $time_limit
+    #SBATCH --cpus-per-task=1
+    #SBATCH --mem=$mem
+
+    export PATH=/n/app/bcbio/dev/anaconda/bin/:/n/app/bcbio/tools/bin:$$PATH
+    bcbio_nextgen.py ../config/$name.yaml -n $cores -t ipython -s slurm -q $queue -r t=$time_limit --timeout 120
+    """
+        )
+    )
     params = RNASEQJOB_PARAMS
 
-    def merge_files(self, data):
+    def merge_files(self, data: pd.DataFrame) -> pd.DataFrame:
         def merge_destination(sample_id, i, files):
             fastq_dir = self.run_directory / "fastq"
             ext = "".join(pathlib.Path(files[0]).suffixes)
@@ -310,8 +336,8 @@ class RnaseqGenericBcbioJob(BcbioJob):
             merged_data.append(m)
         return pd.concat(merged_data, ignore_index=True)
 
-    def prepare_meta(self, data):
-        sample_meta = []
+    def prepare_meta(self, data: pd.DataFrame) -> pd.DataFrame:
+        sample_meta_list = []
         data_by_sample = data.groupby("id")
         for _, g in data_by_sample:
             m = deepcopy(self.sample_meta)
@@ -320,9 +346,9 @@ class RnaseqGenericBcbioJob(BcbioJob):
 
             meta_cols = set(data) - set(p.name for p in self.params)
             m["metadata"] = {c: list(g[c])[0] for c in meta_cols}
-            sample_meta.append(m)
+            sample_meta_list.append(m)
         sample_meta = {
-            "details": sample_meta,
+            "details": sample_meta_list,
             "fc_name": self.name,
             "upload": {"dir": "../final"},
         }
@@ -352,23 +378,6 @@ class DgeBcbioJob(RnaseqGenericBcbioJob):
         "genome_build": None,
         "metadata": {},
     }
-    submit_template = Template(
-        dedent(
-            """\
-    #!/bin/sh
-    #SBATCH -p $queue
-    #SBATCH -J $run_id
-    #SBATCH -o run.o
-    #SBATCH -e run.e
-    #SBATCH -t $time_limit
-    #SBATCH --cpus-per-task=1
-    #SBATCH --mem=$mem
-
-    export PATH=/n/app/bcbio/dev/anaconda/bin/:/n/app/bcbio/tools/bin:$$PATH
-    bcbio_nextgen.py ../config/$name.yaml -n $cores -t ipython -s slurm -q $queue -r t=$time_limit
-    """
-        )
-    )
 
 
 BULKRNASEQJOB_PARAMS = RNASEQJOB_PARAMS + [
@@ -399,23 +408,6 @@ class BulkRnaseqBcbioJob(RnaseqGenericBcbioJob):
         "genome_build": None,
         "metadata": {},
     }
-    submit_template = Template(
-        dedent(
-            """\
-    #!/bin/sh
-    #SBATCH -p $queue
-    #SBATCH -J $run_id
-    #SBATCH -o run.o
-    #SBATCH -e run.e
-    #SBATCH -t $time_limit
-    #SBATCH --cpus-per-task=1
-    #SBATCH --mem=$mem
-
-    export PATH=/n/app/bcbio/dev/anaconda/bin/:/n/app/bcbio/tools/bin:$$PATH
-    bcbio_nextgen.py ../config/$name.yaml -n $cores -t ipython -s slurm -q $queue -r t=$time_limit
-    """
-        )
-    )
 
 
 job_types = {
