@@ -4,8 +4,7 @@ import pathlib
 import re
 import shutil
 from pathlib import Path
-from typing import Union, Sequence, List, Mapping, Tuple, Optional
-
+from typing import List, Mapping, Optional, Sequence, Tuple, Union
 
 PathLike = Union[Path, str]
 

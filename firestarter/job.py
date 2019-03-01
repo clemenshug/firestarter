@@ -1,34 +1,36 @@
 import abc
+import inspect
+import itertools
 import os
 import pathlib
-import itertools
-import typing
-import subprocess
 import shutil
-import numpy as np
-import pandas as pd
-import yaml
+import subprocess
+import typing
 from copy import deepcopy
-from textwrap import dedent
 from datetime import datetime
 from pathlib import Path
 from string import Template
+from textwrap import dedent
 from typing import (
-    Union,
-    Sequence,
-    List,
-    Mapping,
-    Tuple,
-    Optional,
-    Text,
-    Dict,
     Any,
     Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Text,
+    Tuple,
+    Union,
 )
-from attr import attrs, attrib
-from .transfer import transfer_files_batch
-from .util import normalize_path, combine_pairs, merge_files, PathLike
 
+import numpy as np
+import pandas as pd
+import yaml
+from attr import attrib, attrs
+
+from .transfer import transfer_files_batch
+from .util import PathLike, combine_pairs, merge_files, normalize_path
 
 SLURM_PARAMS_DEFAULT = {
     "time_limit": "0-12:00",
@@ -77,7 +79,7 @@ class JobParameter(object):
             if self.default is None:
                 raise ValueError("{self.name} not found in ", str(data))
             if callable(self.default):
-                data[self.name] = self.default(job) # pylint: disable=not-callable
+                data[self.name] = self.default(job)  # pylint: disable=not-callable
             elif self.default is EMPTY_DEFAULT:
                 # Don't add column, is supposed to be empty
                 return data
@@ -122,7 +124,7 @@ def merge_rule_fastq(
         merged_name = f"{sample_id}_merged_{i}"
         merged_dir = job.file_destinations[parameter.name] / "merged"
         merged_dir.mkdir(exist_ok=True)
-        return  merged_dir / (merged_name + ext)
+        return merged_dir / (merged_name + ext)
 
     def merge_per_sample(sample_id, sample_data):
         files = sample_data[parameter.name]
@@ -161,7 +163,7 @@ class FileJobParameter(JobParameter):
     merge_rule: Callable = attrib(kw_only=True, default=merge_rule_none, repr=False)
 
     def merge_files(self, job: "BcbioJob", data: pd.DataFrame) -> pd.DataFrame:
-        return self.merge_rule(job, self, data) # pylint: disable=not-callable
+        return self.merge_rule(job, self, data)  # pylint: disable=not-callable
 
 
 BCBIOJOB_PARAMS = [
@@ -407,7 +409,7 @@ RNASEQJOB_PARAMS = BCBIOJOB_PARAMS + [
         "files",
         destination="fastq",
         per_sample=False,
-        merge_rule=merge_rule_fastq
+        merge_rule=merge_rule_fastq,
     ),
 ]
 
@@ -458,6 +460,7 @@ class RnaseqGenericBcbioJob(BcbioJob):
 
 
 class DgeBcbioJob(RnaseqGenericBcbioJob):
+    job_type = "bcbio_dge"
     sample_meta = {
         "algorithm": {
             "cellular_barcode_correction": 1,
@@ -489,6 +492,7 @@ BULKRNASEQJOB_PARAMS = RNASEQJOB_PARAMS + [
 
 
 class BulkRnaseqBcbioJob(RnaseqGenericBcbioJob):
+    job_type = "bcbio_bulk"
     params = BULKRNASEQJOB_PARAMS
     sample_meta = {
         "algorithm": {
@@ -506,6 +510,7 @@ class BulkRnaseqBcbioJob(RnaseqGenericBcbioJob):
 
 
 job_types = {
-    "dge": DgeBcbioJob,
-    "bulk": BulkRnaseqBcbioJob,
+    cls.job_type: cls
+    for cls in globals().values()
+    if (inspect.isclass(cls) and issubclass(cls, BcbioJob) and hasattr(cls, "job_type"))
 }
