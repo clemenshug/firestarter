@@ -1,8 +1,13 @@
 firestarter package
 ===================
 
-Submodules
-----------
+Module contents
+---------------
+
+.. automodule:: firestarter
+    :members:
+    :undoc-members:
+    :show-inheritance:
 
 firestarter.job module
 ----------------------
@@ -24,15 +29,6 @@ firestarter.util module
 -----------------------
 
 .. automodule:: firestarter.util
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-
-Module contents
----------------
-
-.. automodule:: firestarter
     :members:
     :undoc-members:
     :show-inheritance:

@@ -7,7 +7,6 @@ import sys
 import pandas as pd
 import firestarter
 from copy import deepcopy
-from firestarter.util import parse_csv
 
 
 def main(sys_args):
@@ -15,7 +14,8 @@ def main(sys_args):
     parser.add_argument(
         "job_type",
         choices=list(firestarter.job_types.keys()),
-        help="Type of job, one of " + ", ".join(firestarter.job_types.keys()),
+        help="""Type of job. Check the documentation for available types and the
+                parameters the support"""
     )
     parser.add_argument(
         "job", type=pathlib.Path, help="Job description .yaml or .csv file"

@@ -44,7 +44,8 @@ EMPTY_DEFAULT = "EMPTY_DEFAULT"
 @attrs(auto_attribs=True)
 class JobParameter(object):
     name: Text
-    path: Union[Text, List[Text]]
+    path: Union[Text, List[Text]] = attrib(repr=False)
+    description: Text = attrib(default="")
     default: Optional[Any] = attrib(default=None, kw_only=True)
     per_sample: bool = attrib(default=True, kw_only=True)
     _compatible_types = tuple(yaml.SafeDumper.yaml_representers.keys())[:-1]
@@ -156,8 +157,8 @@ def merge_rule_fastq(
 
 @attrs
 class FileJobParameter(JobParameter):
-    destination: PathLike = attrib(kw_only=True)
-    merge_rule: Callable = attrib(kw_only=True, default=merge_rule_none)
+    destination: PathLike = attrib(kw_only=True, repr=False)
+    merge_rule: Callable = attrib(kw_only=True, default=merge_rule_none, repr=False)
 
     def merge_files(self, job: "BcbioJob", data: pd.DataFrame) -> pd.DataFrame:
         return self.merge_rule(job, self, data) # pylint: disable=not-callable

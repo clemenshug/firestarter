@@ -1,5 +1,5 @@
-firestarter
-===========
+firestarter API
+===============
 
 .. toctree::
    :maxdepth: 4
