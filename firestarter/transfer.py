@@ -137,7 +137,8 @@ class SCPTransfer(object):
             destination_size = destination.stat().st_size
             remote_size = self.get_file_size(str(source))
             print(f"File {source} already copied. Local {destination_size}. Remote {remote_size}")
-            if destination_size == remote_size and file_md5(destination) == self.get_md5(str(source)):
+            # if destination_size == remote_size and file_md5(destination) == self.get_md5(str(source)):
+            if destination_size == remote_size:
                 print("File identical. Skip copying")
                 return
         self._sftp.get(str(source), str(destination), progress_tracker)
