@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import os
 import pathlib
 import re
@@ -169,3 +170,12 @@ def combine_pairs(input_files, force_single=False, full_name=False, separators=N
             pairs.append([in_file])
             used.add(in_file)
     return pairs
+
+
+# https://stackoverflow.com/a/3431838/4603385
+def file_md5(fname):
+    hash_md5 = hashlib.md5()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()

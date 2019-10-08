@@ -16,10 +16,9 @@ from typing import Dict, List, Mapping, Optional, Sequence, Text, Tuple, Union
 import progressbar
 from progressbar import widgets
 import yaml
-from paramiko import SSHClient
-from scp import SCPClient
+from paramiko import SSHClient, SFTPClient
 
-from .util import PathLike
+from .util import PathLike, file_md5
 
 
 def load_ssh_config(path: Optional[Text] = None) -> Optional[Union[List[Dict], Dict]]:
@@ -64,8 +63,8 @@ class SCPProgressTracker(object):
     def __init__(self):
         self.pbs = {}
 
-    def __call__(self, filename, size, sent, peername):
-        h = (filename, size, peername)
+    def __call__(self, sent, size):
+        h = size
         if h not in self.pbs:
             self.pbs[h] = progressbar.ProgressBar(
                 max_value=size,
@@ -73,7 +72,7 @@ class SCPProgressTracker(object):
                 # prefix = f"Downloading {filename}"
             )
         self.pbs[h].update(sent)
-        if sent == size:
+        if sent >= size:
             self.pbs[h].finish()
             del self.pbs[h]
 
@@ -93,16 +92,16 @@ class SCPTransfer(object):
         )
         self.quiet = quiet
         self._ssh = None
-        self._scp = None
+        self._sftp = None
 
     def __enter__(self):
         self.establish_connection()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._scp:
-            self._scp.close()
-        self._scp = None
+        if self._sftp:
+            self._sftp.close()
+        self._sftp = None
         self._ssh = None
 
     def establish_connection(self):
@@ -115,45 +114,33 @@ class SCPTransfer(object):
             allow_agent=False,
             auth_timeout=20,
         )
-        scp = SCPClient(ssh.get_transport(), progress4=progress_tracker)
+        # scp = SCPClient(ssh.get_transport(), progress4=progress_tracker)
         self._ssh = ssh
-        self._scp = scp
+        self._sftp = ssh.open_sftp()
 
     def get_file_size(self, source: Text) -> Optional[int]:
-        # Hacky way to get remote file size by immediately raising exception
-        # once transfer has started and size is known
-        class SCPFileSizeException(Exception):
-            def __init__(self, message, size=None):
-                super().__init__(message)
-                self.size = size
+        return self._sftp.stat(source).st_size
 
-        def size_progress(filename, size, sent, peername):
-            raise SCPFileSizeException("", size=size)
-
-        size = None
-        scp = SCPClient(self._ssh.get_transport(), progress4=size_progress)
-        try:
-            tmp = tempfile.mkstemp()[1]
-            scp.get(source, tmp)
-        except SCPFileSizeException as e:
-            size = e.size
-        finally:
-            os.remove(tmp)
-            scp.close()
-        return size
+    def get_md5(self, source:  Text) -> Text:
+        ret = self._ssh.exec_command("md5sum " + source)
+        md5 = ret[1].readline().split(" ")[0]
+        if len(md5) != 32:
+            raise RuntimeError("Unable to find md5 for ", source)
+        return md5
 
     def get_file(
         self, source: PathLike, destination: PathLike, skip_if_exists: bool = True
     ) -> None:
-        source = pathlib.Path(source)
-        destination = pathlib.Path(destination)
+        source = Path(source)
+        destination = Path(destination)
         if destination.exists():
             destination_size = destination.stat().st_size
             remote_size = self.get_file_size(str(source))
-            if destination_size == remote_size:
-                print(f"File {source} already copied, skipping.")
+            print(f"File {source} already copied. Local {destination_size}. Remote {remote_size}")
+            if destination_size == remote_size and file_md5(destination) == self.get_md5(str(source)):
+                print("File identical. Skip copying")
                 return
-        self._scp.get(str(source), str(destination))
+        self._sftp.get(str(source), str(destination), progress_tracker)
 
 
 def check_transfer_success(p: PathLike) -> None:
