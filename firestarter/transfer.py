@@ -13,7 +13,8 @@ from pathlib import Path
 from shutil import copyfile
 from typing import Dict, List, Mapping, Optional, Sequence, Text, Tuple, Union
 
-import progressbar as widgets
+import progressbar
+from progressbar import widgets
 import yaml
 from paramiko import SSHClient
 from scp import SCPClient
