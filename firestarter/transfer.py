@@ -1,22 +1,23 @@
-import sys
 import getpass
-import os
-import re
-import tempfile
-import typing
 import itertools
 import operator
-import shutil
+import os
 import pathlib
-import yaml
-import progressbar
-import progressbar as widgets
+import re
+import shutil
+import sys
+import tempfile
+import typing
 from collections import defaultdict
 from pathlib import Path
 from shutil import copyfile
-from typing import Union, Sequence, List, Mapping, Tuple, Optional, Text, Dict
+from typing import Dict, List, Mapping, Optional, Sequence, Text, Tuple, Union
+
+import progressbar as widgets
+import yaml
 from paramiko import SSHClient
 from scp import SCPClient
+
 from .util import PathLike
 
 
@@ -188,8 +189,8 @@ def transfer_local_batch(transfers: Sequence[Tuple[PathLike, PathLike]]) -> None
 
 
 def transfer_files_batch(
-    files: Mapping[Text, Sequence[Tuple[PathLike, PathLike]]]
-) -> Dict[Text, List[Tuple[PathLike, PathLike]]]:
+    files: Sequence[Tuple[PathLike, PathLike]]
+) -> None:
     def aggregate_by_host(transfers):
         keyfunc = operator.itemgetter(0)
         return itertools.groupby(sorted(transfers, key=keyfunc), key=keyfunc)
@@ -202,13 +203,9 @@ def transfer_files_batch(
             else:
                 transfer_scp_batch(host, tlist)
 
-    file_destinations: Dict[Text, List[Tuple[PathLike, PathLike]]] = defaultdict(list)
     file_transfers = []
-    for n, transfers in files.items():
-        for o, d in transfers:
-            o_host, o_resolved = extract_host(o)
-            d_resolved = Path(d) / Path(o).name
-            file_destinations[n].append((o, d_resolved))
-            file_transfers.append((o_host, (o_resolved, d_resolved)))
+    for o, d in files:
+        o_host, o_resolved = extract_host(o)
+        d_resolved = Path(d)
+        file_transfers.append((o_host, (o_resolved, d_resolved)))
     execute_transfers(file_transfers)
-    return file_destinations

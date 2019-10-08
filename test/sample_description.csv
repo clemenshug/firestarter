@@ -7,3 +7,4 @@ sample2,transfer.rc.hms.harvard.edu:/n/files/ImStor/sorger/data/rnaseq/clemens/o
 sample2,transfer.rc.hms.harvard.edu:/n/files/ImStor/sorger/data/rnaseq/clemens/o2jobber_test_data/sample2_run1_2.fastq.gz,/home/ch305/o2_jobber_test/test.fa,/home/ch305/o2_jobber_test/test.gtf,324egf,trykety
 sample3,transfer.rc.hms.harvard.edu:/n/files/ImStor/sorger/data/rnaseq/clemens/o2jobber_test_data/sample3_1.fastq.gz,/home/ch305/o2_jobber_test/test.fa,/home/ch305/o2_jobber_test/test.gtf,asdfasdf,ghjkfsg
 sample4,transfer.rc.hms.harvard.edu:/n/files/ImStor/sorger/data/rnaseq/clemens/o2jobber_test_data/sample4_R1.001.fastq.gz,/home/ch305/o2_jobber_test/test.fa,/home/ch305/o2_jobber_test/test.gtf,sdfasad,dasffdd
+sample2,transfer.rc.hms.harvard.edu:/n/files/ImStor/sorger/data/rnaseq/clemens/o2jobber_test_data_2/sample2_run1_1.fastq.gz,/home/ch305/o2_jobber_test/test.fa,/home/ch305/o2_jobber_test/test.gtf,324egf,trykety

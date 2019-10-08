@@ -6,6 +6,7 @@ import pathlib
 import shutil
 import subprocess
 import typing
+from collections import defaultdict
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -166,9 +167,7 @@ class FileJobParameter(JobParameter):
         return self.merge_rule(job, self, data)  # pylint: disable=not-callable
 
 
-BCBIOJOB_PARAMS = [
-    JobParameter("id", "description"),
-]
+BCBIOJOB_PARAMS = [JobParameter("id", "description")]
 
 
 class BcbioJob(abc.ABC):
@@ -308,25 +307,59 @@ class BcbioJob(abc.ABC):
             RuntimeError: Files not found at new location.
         """
         data = data.copy()
-        file_transfers = {}
+        used_file_params = [x for x in self.file_params if x.name in data]
         destinations = self.file_destinations
-        for p in (x for x in self.file_params if x.name in data):
-            unique_files = list(set(data[p.name]))
-            transfers = list(zip(unique_files, itertools.repeat(destinations[p.name])))
-            file_transfers[p.name] = transfers
-        locations = transfer_files_batch(file_transfers)
-        for n, l in locations.items():
-            o, d = list(zip(*l))
-            new_loc = pd.DataFrame({n: o, f"{n}_moved": d})
-            data = pd.merge(data, new_loc, how="left", on=n)
-            data[n] = data[f"{n}_moved"]
-            data.drop(columns=f"{n}_moved", inplace=True)
-            if not all(p.exists() for p in data[n]):
-                raise RuntimeError(
-                    "Files not found at new location:\n",
-                    str(list(filter(lambda p: not p.exists(), data[n]))),
-                )
-        return data
+        # Find unique files to transfer and make destination file names unique
+        moving_data = data.copy().melt(
+            id_vars=["id"],
+            value_vars=[x.name for x in used_file_params],
+            var_name="file_type",
+            value_name="origin",
+        )
+        moving_data_dedup = (
+            moving_data.drop(columns="id")
+            .drop_duplicates()
+            .merge(
+                pd.DataFrame(
+                    {
+                        "file_type": list(destinations.keys()),
+                        "destination_dir": list(destinations.values()),
+                    }
+                ),
+                how="left",
+                on="file_type",
+            )
+        )
+        moving_data_dedup["origin_name"] = [
+            Path(p).name for p in moving_data_dedup["origin"]
+        ]
+        seen_fn = defaultdict(int)
+        destination_names = []
+        for pn in moving_data_dedup["origin_name"]:
+            if pn not in seen_fn:
+                nn = pn
+            else:
+                p = Path(pn)
+                nn = str(p.with_name(str(seen_fn[pn]) + "_" + p.name))
+            seen_fn[pn] += 1
+            destination_names.append(nn)
+        moving_data_dedup["destination_name"] = destination_names
+        moving_data_dedup["destination_path"] = [
+            str(Path(d) / n)
+            for d, n in zip(
+                moving_data_dedup["destination_dir"],
+                moving_data_dedup["destination_name"],
+            )
+        ]
+        file_transfers = list(
+            zip(moving_data_dedup["origin"], moving_data_dedup["destination_path"])
+        )
+        file_map = dict(file_transfers)
+        data_new = data.copy()
+        for f in used_file_params:
+            data_new[f.name] = [file_map[x] for x in data_new[f.name]]
+        transfer_files_batch(file_transfers)
+        return data_new
 
     def merge_files(self, data: pd.DataFrame) -> pd.DataFrame:
         # Unique values for all per-sample cols are guaranteed by check_data method
