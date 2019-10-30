@@ -30,8 +30,10 @@ def concatenate_files(source_files: Sequence[PathLike], destination: PathLike) -
 
 
 def merge_files(
-    files: Sequence[Path], destination: Path, skip_if_exists: bool = True
+    files: Sequence[PathLike], destination: PathLike, skip_if_exists: bool = True
 ) -> Path:
+    files = [Path(p) for p in files]
+    destination = Path(destination)
     if destination.exists():
         combined_size = sum(f.stat().st_size for f in files)
         dest_size = destination.stat().st_size
