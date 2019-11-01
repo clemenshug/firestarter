@@ -4,6 +4,7 @@ import os
 import pathlib
 import re
 import shutil
+from collections import defaultdict
 from pathlib import Path
 from typing import List, Mapping, Optional, Sequence, Tuple, Union
 
@@ -72,18 +73,6 @@ def splitext_plus(f):
     return base, ext
 
 
-def rstrip_extra(fname):
-    """Strip extraneous, non-discriminative filename info from the end of a file.
-    """
-    to_strip = ("_R", ".R", "-R", "_", "fastq", ".", "-")
-    while fname.endswith(to_strip):
-        for x in to_strip:
-            if fname.endswith(x):
-                fname = fname[: len(fname) - len(x)]
-                break
-    return fname
-
-
 def sort_filenames(filenames):
     """
     sort a list of files by filename only, ignoring the directory names
@@ -93,84 +82,19 @@ def sort_filenames(filenames):
     return [filenames[x] for x in indexes]
 
 
-def combine_pairs(input_files, force_single=False, full_name=False, separators=None):
-    """ calls files pairs if they are completely the same except
-    for one has _1 and the other has _2 returns a list of tuples
-    of pairs or singles.
-    From bipy.utils (https://github.com/roryk/bipy/blob/master/bipy/utils.py)
-    Adjusted to allow different input paths or extensions for matching files.
-    """
-    PAIR_FILE_IDENTIFIERS = set(["1", "2", "3", "4"])
-
-    pairs = []
-    used = set([])
-    used_separators = set([])
-    separators = separators if separators else ("R", "_", "-", ".")
-    for in_file in input_files:
-        matches = set([])
-        if in_file in used:
-            continue
-        if not force_single:
-            for comp_file in input_files:
-                if comp_file in used or comp_file == in_file:
-                    continue
-                if full_name:
-                    in_file_name = in_file
-                    comp_file_name = comp_file
-                else:
-                    in_file_name = os.path.basename(in_file)
-                    comp_file_name = os.path.basename(comp_file)
-
-                a = rstrip_extra(splitext_plus(in_file_name)[0])
-                b = rstrip_extra(splitext_plus(comp_file_name)[0])
-                if len(a) != len(b):
-                    continue
-                s = str_diff(a, b)
-                # no differences, then its the same file stem
-                if len(s) == 0:
-                    raise ValueError(
-                        "%s and %s have the same stem, so we don't know "
-                        "how to assign it to the sample data in the CSV. To "
-                        "get around this you can rename one of the files. "
-                        "If they are meant to be the same sample run in two "
-                        "lanes, combine them first with the "
-                        "bcbio_prepare_samples.py script."
-                        "(http://bcbio-nextgen.readthedocs.io/en/latest/contents/configuration.html#multiple-files-per-sample)"
-                        % (in_file, comp_file)
-                    )
-                if len(s) > 1:
-                    continue  # there is more than 1 difference
-                if (
-                    a[s[0]] in PAIR_FILE_IDENTIFIERS
-                    and b[s[0]] in PAIR_FILE_IDENTIFIERS
-                ):
-                    # if the 1/2 isn't the last digit before a separator, skip
-                    # this skips stuff like 2P 2A, often denoting replicates, not
-                    # read pairings
-                    if len(b) > (s[0] + 1):
-                        if b[s[0] + 1] not in ("_", "-", "."):
-                            continue
-                    # if the 1/2 is not a separator or prefaced with R, skip
-                    if b[s[0] - 1] in separators:
-                        used_separators.add(b[s[0] - 1])
-                        if len(used_separators) > 1:
-                            print(
-                                "To split into paired reads multiple separators were used: %s"
-                                % used_separators
-                            )
-                            print("This can lead to wrong assignation.")
-                            print(
-                                "Use --separator option in bcbio_prepare_samples.py to specify only one."
-                            )
-                            print("For instance, --separator R.")
-                        matches.update([in_file, comp_file])
-                        used.update([in_file, comp_file])
-
-            if matches:
-                pairs.append(sort_filenames(list(matches)))
-        if in_file not in used:
-            pairs.append([in_file])
-            used.add(in_file)
+def combine_pairs(files, pair_patterns = [r"_R(\d)_\d{3}\.fastq", r"_(\d)\.fastq"]):
+    regexes = [re.compile(p) for p in pair_patterns]
+    pairs = defaultdict(list)
+    for f in files:
+        for r in regexes:
+            m = r.search(f)
+            if m is None:
+                continue
+            pairs[int(m.group(1))].append(f)
+            break
+        # If none of the regexes match assume it's read 1
+        else:
+            pairs[1].append(f)
     return pairs
 
 

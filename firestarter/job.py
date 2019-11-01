@@ -120,8 +120,7 @@ def merge_rule_none(
 def merge_rule_fastq(
     job: "BcbioJob", parameter: JobParameter, data: pd.DataFrame
 ) -> pd.DataFrame:
-    def merge_destination(sample_id, i, files):
-        ext = "".join(pathlib.Path(files[0]).suffixes)
+    def merge_destination(sample_id, i, ext):
         merged_name = f"{sample_id}_merged_{i}"
         merged_dir = job.file_destinations[parameter.name] / "merged"
         merged_dir.mkdir(exist_ok=True)
@@ -130,21 +129,16 @@ def merge_rule_fastq(
     def merge_per_sample(sample_id, sample_data):
         files = sample_data[parameter.name]
         pairs = combine_pairs(files)
-        if len(pairs) == 1:
+        if all(len(p) == 1 for p in pairs.values()):
             # Nothing to merge
             return files
-        # If one fastq is paired, all should be paired
-        if any(isinstance(p, typing.List) for p in pairs):
-            if not all(isinstance(p, typing.List) for p in pairs):
-                raise ValueError("Pairing error: " + str(pairs))
-            files_merge = list(zip(*pairs))
-            files_destination = []
-            for i, files in enumerate(files_merge):
-                dest = merge_files(files, merge_destination(sample_id, i + 1, files))
-                files_destination.append(dest)
-        else:
-            dest = merge_files(pairs, merge_destination(sample_id, 1, pairs))
-            files_destination = [dest]
+        files_destination = []
+        for i, files_merge in pairs.items():
+            ext = set("".join(Path(f).suffixes) for f in files_merge)
+            if len(ext) != 1:
+                raise RuntimeError("Couldn't determine common file extension for ", str(files_merge))
+            dest = merge_files(files_merge, merge_destination(sample_id, i, ext.pop()))
+            files_destination.append(dest)
         return files_destination
 
     sample_groups = data.groupby("id")
