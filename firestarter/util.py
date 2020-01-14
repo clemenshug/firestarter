@@ -82,7 +82,9 @@ def sort_filenames(filenames):
     return [filenames[x] for x in indexes]
 
 
-def combine_pairs(files, pair_patterns = [r"_R(\d)_\d{3}\.fastq", r"_(\d)\.fastq"]):
+def combine_pairs(
+    files, pair_patterns=[r"_R(\d)_\d{3}\.fastq", r"_(\d)\.fastq", r"R(\d)\.fastq"]
+):
     regexes = [re.compile(p) for p in pair_patterns]
     pairs = defaultdict(list)
     for f in files:
