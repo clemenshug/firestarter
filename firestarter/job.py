@@ -136,7 +136,9 @@ def merge_rule_fastq(
         for i, files_merge in pairs.items():
             ext = set("".join(Path(f).suffixes) for f in files_merge)
             if len(ext) != 1:
-                raise RuntimeError("Couldn't determine common file extension for ", str(files_merge))
+                raise RuntimeError(
+                    "Couldn't determine common file extension for ", str(files_merge)
+                )
             dest = merge_files(files_merge, merge_destination(sample_id, i, ext.pop()))
             files_destination.append(dest)
         return files_destination
@@ -374,9 +376,20 @@ class BcbioJob(abc.ABC):
         self.prepare_working_directory()
         self.prepare_run_directory()
         data_defaults = self.add_defaults(self.data)
+        if self.debug:
+            data_defaults.to_csv(self.run_directory / "data_defaults.csv", index=False)
         data_normalized = self.normalize_paths(data_defaults)
+        if self.debug:
+            data_normalized.to_csv(
+                self.run_directory / "data_normalized.csv", index=False
+            )
         data_transferred = self.transfer_files(data_normalized)
+        if self.debug:
+            data_transferred.to_csv(
+                self.run_directory / "data_transferred.csv", index=False
+            )
         data_merged = self.merge_files(data_transferred)
+        data_merged.to_csv(self.run_directory / "data_merged.csv", index=False)
         self.prepare_meta(data_merged)
 
     def prepare_run(self) -> None:
@@ -492,7 +505,7 @@ class DgeBcbioJob(RnaseqGenericBcbioJob):
         "algorithm": {
             "cellular_barcode_correction": 1,
             "minimum_barcode_depth": 0,
-            "positional_umi": "false",
+            "positional_umi": False,
             "umi_type": "harvard-scrb",
             "transcriptome_fasta": None,
             "transcriptome_gtf": None,
